@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables (never commit real secrets)
+.env
+.env.local
+.env.*.local
+client/.env
+server/.env
+
+# Build output
+client/dist/
+server/dist/
+.vercel/
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code local harness state
+.claude/
