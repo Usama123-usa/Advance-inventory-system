@@ -6,7 +6,7 @@ const SettingsContext = createContext(null);
 
 const DEFAULT_SETTINGS = {
   shop_name: 'My Shop',
-  currency: 'USD',
+  currency: 'PKR',
   tax_rate: 0,
   invoice_footer: 'Thank you for your business!',
   address: '',

@@ -193,7 +193,7 @@ create table if not exists settings (
   address text,
   phone varchar(30),
   email varchar(160),
-  currency varchar(10) not null default 'USD',
+  currency varchar(10) not null default 'PKR',
   tax_rate numeric(5,2) not null default 0,
   invoice_footer text default 'Thank you for your business!',
   theme varchar(10) not null default 'light' check (theme in ('light', 'dark')),
@@ -208,7 +208,7 @@ create trigger trg_settings_updated_at
 
 -- Seed a single default settings row if none exists
 insert into settings (shop_name, currency, tax_rate)
-select 'My Shop', 'USD', 0
+select 'My Shop', 'PKR', 0
 where not exists (select 1 from settings);
 
 -- ============================================================================
