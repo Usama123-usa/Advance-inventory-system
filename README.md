@@ -72,14 +72,17 @@ Log in with `admin@example.com` / `Admin@123`.
 ## 5. Deploy to Vercel
 
 1. Push this project to a GitHub repository.
-2. In Vercel, **Add New Project** → import the repo. Leave the **Root Directory** as the repository root (do *not* set it to `client`) — `vercel.json` at the root already defines both the static frontend build and the `/api` serverless function.
-3. Framework Preset: **Other** (vercel.json handles the build steps).
-4. Add all variables from `.env.example` under **Project Settings → Environment Variables** (same names, real values). Also add `VITE_API_URL=/api` so the deployed frontend calls the same-origin `/api` routes instead of localhost.
+2. In Vercel, **Add New Project** → import the repo. **Root Directory must be left blank / at the repository root** — do not point it at `client`, or Vercel won't see `vercel.json`, `api/`, or the root `package.json` at all.
+3. Framework Preset: it doesn't matter what Vercel auto-detects — `vercel.json` sets `"framework": null` and defines `installCommand`/`buildCommand`/`outputDirectory` explicitly, which always override the dashboard/auto-detected settings.
+4. Add all variables from `.env.example` under **Project Settings → Environment Variables** (same names, real values: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `JWT_SECRET`, etc.). Also add `VITE_API_URL=/api` so the deployed frontend calls the same-origin `/api` routes instead of localhost.
 5. Deploy. Vercel will:
-   - Build `client/` with Vite → served as static files.
-   - Bundle `api/index.js` (which wraps the full Express app) as a serverless function, routed at `/api/*`.
+   - Run `npm install` at the repo root (populates `node_modules` so the `/api` function can resolve `express`, `@supabase/supabase-js`, etc.).
+   - Run the `buildCommand`, which installs `client/`'s own dependencies and builds it with Vite → `client/dist`, served as static files.
+   - Treat `api/index.js` (which wraps the full Express app) as a serverless function. The `rewrites` in `vercel.json` forward every `/api/*` request to it — a single Express file naturally only answers the literal `/api` path by Vercel's file-based routing convention, so the rewrite is what makes every nested route (`/api/auth/login`, `/api/products`, etc.) reach it. The second rewrite sends any other non-file path to `index.html` for React Router's client-side routing.
 
 No separate backend hosting is needed — everything ships from one Vercel project.
+
+**If you still get a 404 after deploying:** double-check **Project Settings → General → Root Directory** is empty (not `client`), then trigger a redeploy — a previously-set Root Directory from an earlier import attempt is the most common cause.
 
 ## Features
 
