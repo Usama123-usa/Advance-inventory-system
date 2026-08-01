@@ -1,14 +1,24 @@
-const { supabase, PRODUCT_IMAGE_BUCKET } = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 
-const PRODUCT_SELECT = '*, categories(name)';
+// Products are global; stock/threshold live per-store in store_products.
+// The !inner hint means a product only shows up for a store if it has been
+// assigned to that store (a row exists in store_products for that pair).
+const PRODUCT_SELECT = '*, categories(name), store_products!inner(stock, low_stock_threshold, is_low_stock)';
 
-const flattenCategory = (product) => {
+const flattenProduct = (product) => {
   if (!product) return product;
-  const { categories, ...rest } = product;
-  return { ...rest, category_name: categories?.name || null };
+  const { categories, store_products, ...rest } = product;
+  const sp = Array.isArray(store_products) ? store_products[0] : store_products;
+  return {
+    ...rest,
+    category_name: categories?.name || null,
+    quantity: sp?.stock ?? 0,
+    low_stock_threshold: sp?.low_stock_threshold ?? 0,
+    is_low_stock: sp?.is_low_stock ?? false,
+  };
 };
 
 // GET /api/products?search=&category=&status=&lowStock=&page=&limit=
@@ -20,6 +30,7 @@ const getProducts = asyncHandler(async (req, res) => {
   let queryBuilder = supabase
     .from('products')
     .select(PRODUCT_SELECT, { count: 'exact' })
+    .eq('store_products.store_id', req.storeId)
     .order('created_at', { ascending: false })
     .range(from, to);
 
@@ -28,14 +39,14 @@ const getProducts = asyncHandler(async (req, res) => {
   }
   if (category) queryBuilder = queryBuilder.eq('category_id', category);
   if (status) queryBuilder = queryBuilder.eq('status', status);
-  if (lowStock === 'true') queryBuilder = queryBuilder.eq('is_low_stock', true);
+  if (lowStock === 'true') queryBuilder = queryBuilder.eq('store_products.is_low_stock', true);
 
   const { data, error, count } = await queryBuilder;
   assertNoSupabaseError(error, 'Failed to load products');
 
   res.json({
     success: true,
-    data: data.map(flattenCategory),
+    data: data.map(flattenProduct),
     pagination: {
       total: count || 0,
       page: Number(page),
@@ -47,10 +58,16 @@ const getProducts = asyncHandler(async (req, res) => {
 
 // GET /api/products/:id
 const getProductById = asyncHandler(async (req, res) => {
-  const { data, error } = await supabase.from('products').select(PRODUCT_SELECT).eq('id', req.params.id).maybeSingle();
+  const { data, error } = await supabase
+    .from('products')
+    .select(PRODUCT_SELECT)
+    .eq('id', req.params.id)
+    .eq('store_products.store_id', req.storeId)
+    .maybeSingle();
+
   assertNoSupabaseError(error, 'Failed to load product');
   if (!data) throw new ApiError(404, 'Product not found');
-  res.json({ success: true, data: flattenCategory(data) });
+  res.json({ success: true, data: flattenProduct(data) });
 });
 
 // GET /api/products/barcode/:barcode
@@ -59,51 +76,93 @@ const getProductByBarcode = asyncHandler(async (req, res) => {
     .from('products')
     .select(PRODUCT_SELECT)
     .eq('barcode', req.params.barcode)
+    .eq('store_products.store_id', req.storeId)
     .maybeSingle();
 
   assertNoSupabaseError(error, 'Failed to look up product');
   if (!data) throw new ApiError(404, 'Product not found for this barcode');
-  res.json({ success: true, data: flattenCategory(data) });
+  res.json({ success: true, data: flattenProduct(data) });
 });
 
-const buildProductPayload = (body) => ({
-  name: body.name.trim(),
-  barcode: body.barcode?.trim() || null,
-  sku: body.sku?.trim() || null,
-  category_id: body.categoryId || null,
-  purchase_price: Number(body.purchasePrice) || 0,
-  selling_price: Number(body.sellingPrice) || 0,
-  quantity: Number(body.quantity) || 0,
-  unit: body.unit?.trim() || 'pcs',
-  low_stock_threshold: Number(body.lowStockThreshold) || 5,
-  description: body.description || null,
-  status: body.status || 'active',
-});
+const numOrNull = (value) => {
+  const n = Number(value);
+  return value !== '' && value != null && Number.isFinite(n) ? n : null;
+};
 
-// POST /api/products
+// Products come in two shapes depending on their category's type: Tiles
+// (size/glaze/sqr-meter/rate/packing) or Other (article/company/unit type).
+// Fields outside the given product_type are always stored as null.
+const buildProductPayload = (body) => {
+  const productType = body.productType === 'tiles' || body.productType === 'other' ? body.productType : null;
+  const isTiles = productType === 'tiles';
+  const isOther = productType === 'other';
+
+  return {
+    name: body.name.trim(),
+    barcode: body.barcode?.trim() || null,
+    sku: body.sku?.trim() || null,
+    category_id: body.categoryId || null,
+    purchase_price: Number(body.purchasePrice) || 0,
+    selling_price: Number(body.sellingPrice) || 0,
+    // Tiles/Other forms don't expose a raw "unit" input — derive a sensible
+    // one so existing "{quantity} {unit}" displays (Products table, POS
+    // cart) keep working. Legacy callers can still pass body.unit directly.
+    unit: isTiles ? 'box' : isOther ? (body.unitType === 'pcs' ? 'pcs' : 'box') : body.unit?.trim() || 'pcs',
+    description: body.description || null,
+    status: body.status || 'active',
+    product_type: productType,
+    size: isTiles ? body.size?.trim() || null : null,
+    glaze_grade: isTiles ? body.glazeGrade?.trim() || null : null,
+    sqr_meter: isTiles ? numOrNull(body.sqrMeter) : null,
+    packing_per_box: isTiles ? numOrNull(body.packingPerBox) : null,
+    rate_per_meter: isTiles ? numOrNull(body.ratePerMeter) : null,
+    article: isOther ? body.article?.trim() || null : null,
+    company: isOther ? body.company?.trim() || null : null,
+    unit_type: isOther && (body.unitType === 'box' || body.unitType === 'pcs') ? body.unitType : null,
+  };
+};
+
+// POST /api/products  (admin only — creates the global product, plus a
+// store_products row for the Main Store and any storeIds selected via the
+// "Add to which stores?" multi-select. Selected sub-stores start at zero
+// stock; only the Main Store gets the entered initial quantity.)
 const createProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
-  let imageUrl = req.body.imageUrl || null;
+  const initialStock = Math.max(0, Number(req.body.quantity) || 0);
+  const lowStockThreshold = Math.max(0, Number(req.body.lowStockThreshold) || 5);
+  const storeIds = Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
 
-  if (req.file) {
-    imageUrl = await uploadProductImage(req.file);
-  }
+  const { data: mainStore, error: mainStoreError } = await supabase
+    .from('stores')
+    .select('id')
+    .eq('is_main', true)
+    .maybeSingle();
 
-  const { data: product, error } = await supabase
-    .from('products')
-    .insert({ ...payload, image_url: imageUrl })
-    .select('*')
-    .single();
+  assertNoSupabaseError(mainStoreError, 'Failed to resolve Main Store');
+  if (!mainStore) throw new ApiError(500, 'Main Store is not configured');
 
+  const { data: product, error } = await supabase.from('products').insert(payload).select('*').single();
   assertNoSupabaseError(error, 'Failed to create product');
 
-  if (payload.quantity > 0) {
+  const targetStoreIds = Array.from(new Set([mainStore.id, ...storeIds]));
+  const storeProductRows = targetStoreIds.map((storeId) => ({
+    store_id: storeId,
+    product_id: product.id,
+    stock: storeId === mainStore.id ? initialStock : 0,
+    low_stock_threshold: lowStockThreshold,
+  }));
+
+  const { error: spError } = await supabase.from('store_products').insert(storeProductRows);
+  assertNoSupabaseError(spError, 'Failed to assign product to stores');
+
+  if (initialStock > 0) {
     await supabase.from('inventory_logs').insert({
+      store_id: mainStore.id,
       product_id: product.id,
       change_type: 'in',
-      quantity: payload.quantity,
+      quantity: initialStock,
       previous_quantity: 0,
-      new_quantity: payload.quantity,
+      new_quantity: initialStock,
       reason: 'Initial stock on product creation',
       created_by: req.user.id,
     });
@@ -112,60 +171,54 @@ const createProduct = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: product });
 });
 
-// PUT /api/products/:id
+// PUT /api/products/:id  (admin only — edits global product fields; storeIds
+// here only ever ADDS new store assignments at zero stock, it never removes
+// an existing assignment)
 const updateProduct = asyncHandler(async (req, res) => {
-  const { data: existing, error: fetchError } = await supabase
-    .from('products')
-    .select('image_url')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  assertNoSupabaseError(fetchError, 'Failed to load product');
-  if (!existing) throw new ApiError(404, 'Product not found');
-
   const payload = buildProductPayload(req.body);
-  let imageUrl = req.body.imageUrl || existing.image_url;
-
-  if (req.file) {
-    imageUrl = await uploadProductImage(req.file);
-  }
-
-  // Quantity is intentionally excluded — stock changes must go through the
-  // Inventory stock-in/stock-out endpoints so every change is audit-logged.
-  const { quantity, ...updatable } = payload;
 
   const { data, error } = await supabase
     .from('products')
-    .update({ ...updatable, image_url: imageUrl })
+    .update(payload)
     .eq('id', req.params.id)
     .select('*')
-    .single();
+    .maybeSingle();
 
   assertNoSupabaseError(error, 'Failed to update product');
+  if (!data) throw new ApiError(404, 'Product not found');
+
+  const storeIds = Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
+  if (storeIds.length) {
+    const { data: existingRows, error: existingError } = await supabase
+      .from('store_products')
+      .select('store_id')
+      .eq('product_id', req.params.id)
+      .in('store_id', storeIds);
+
+    assertNoSupabaseError(existingError, 'Failed to check store assignment');
+
+    const alreadyAssigned = new Set((existingRows || []).map((row) => row.store_id));
+    const newRows = storeIds
+      .filter((storeId) => !alreadyAssigned.has(storeId))
+      .map((storeId) => ({ store_id: storeId, product_id: req.params.id, stock: 0 }));
+
+    if (newRows.length) {
+      const { error: insertError } = await supabase.from('store_products').insert(newRows);
+      assertNoSupabaseError(insertError, 'Failed to assign product to additional stores');
+    }
+  }
+
   res.json({ success: true, data });
 });
 
-// DELETE /api/products/:id  -- permanent hard delete as required
+// DELETE /api/products/:id  -- permanent hard delete as required (cascades
+// through store_products and inventory_logs)
 const deleteProduct = asyncHandler(async (req, res) => {
   const { data, error } = await supabase.from('products').delete().eq('id', req.params.id).select('id').maybeSingle();
   assertNoSupabaseError(error, 'Failed to delete product');
   if (!data) throw new ApiError(404, 'Product not found');
   res.json({ success: true, message: 'Product permanently deleted' });
 });
-
-async function uploadProductImage(file) {
-  const ext = file.originalname.split('.').pop();
-  const path = `products/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-  const { error } = await supabase.storage
-    .from(PRODUCT_IMAGE_BUCKET)
-    .upload(path, file.buffer, { contentType: file.mimetype, upsert: false });
-
-  if (error) throw new ApiError(500, `Image upload failed: ${error.message}`);
-
-  const { data } = supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
-}
 
 module.exports = {
   getProducts,

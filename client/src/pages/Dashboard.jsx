@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import {
   Package,
   Tags,
@@ -6,6 +6,8 @@ import {
   CalendarDays,
   TrendingUp,
   DollarSign,
+  Wallet,
+  CalendarRange,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -26,6 +28,86 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 
+// Each panel only re-renders when its own slice of dashboard data changes,
+// not on every Dashboard render.
+const SalesTrendChart = memo(function SalesTrendChart({ trend, currency }) {
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <AreaChart data={trend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+        <defs>
+          <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+        <XAxis
+          dataKey="date"
+          tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis fontSize={12} tickLine={false} axisLine={false} width={40} />
+        <Tooltip
+          formatter={(value) => formatCurrency(value, currency)}
+          labelFormatter={(v) => new Date(v).toLocaleDateString()}
+          contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 13 }}
+        />
+        <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fill="url(#colorTotal)" strokeWidth={2} />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+});
+
+const BestSellingList = memo(function BestSellingList({ bestSelling, currency }) {
+  if (bestSelling.length === 0) {
+    return <EmptyState title="No sales yet" description="Best sellers will appear here." />;
+  }
+  return (
+    <div className="space-y-4">
+      {bestSelling.map((p, i) => (
+        <div key={p.id} className="flex items-center gap-3">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+            {i + 1}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{p.name}</p>
+            <p className="text-xs text-muted-foreground">{p.units_sold} units sold</p>
+          </div>
+          <p className="shrink-0 text-sm font-semibold">{formatCurrency(p.revenue, currency)}</p>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const RecentSalesList = memo(function RecentSalesList({ recentSales, currency }) {
+  if (recentSales.length === 0) {
+    return <EmptyState title="No sales recorded yet" description="Completed sales will show up here." />;
+  }
+  return (
+    <div className="divide-y divide-border">
+      {recentSales.map((sale) => (
+        <div key={sale.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+          <div>
+            <p className="text-sm font-medium">{sale.invoice_number}</p>
+            <p className="text-xs text-muted-foreground">
+              {sale.customer_name} · {formatDateTime(sale.created_at)}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="capitalize">
+              {sale.payment_method.replace('_', ' ')}
+            </Badge>
+            <p className="font-semibold">{formatCurrency(sale.grand_total, currency)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
 export default function Dashboard() {
   const { settings } = useSettings();
   const [summary, setSummary] = useState(null);
@@ -37,18 +119,16 @@ export default function Dashboard() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([
-      api.get('/dashboard/summary'),
-      api.get('/dashboard/sales-trend', { params: { days: 14 } }),
-      api.get('/dashboard/recent-sales', { params: { limit: 6 } }),
-      api.get('/dashboard/best-selling', { params: { limit: 5 } }),
-    ])
-      .then(([s, t, r, b]) => {
+    // Single combined request — the backend runs all 4 underlying queries
+    // in parallel and returns them together instead of 4 separate round trips.
+    api
+      .get('/dashboard', { params: { days: 14, recentLimit: 6, bestSellingLimit: 5 } })
+      .then(({ data }) => {
         if (!active) return;
-        setSummary(s.data.data);
-        setTrend(t.data.data);
-        setRecentSales(r.data.data);
-        setBestSelling(b.data.data);
+        setSummary(data.data.summary);
+        setTrend(data.data.salesTrend);
+        setRecentSales(data.data.recentSales);
+        setBestSelling(data.data.bestSelling);
       })
       .finally(() => active && setLoading(false));
     return () => {
@@ -70,13 +150,13 @@ export default function Dashboard() {
     );
   }
 
-  const currency = settings?.currency || 'USD';
+  const currency = settings?.currency || 'PKR';
 
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" description="Overview of your store's performance" />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Total Products" value={summary.totalProducts} icon={Package} />
         <StatCard label="Total Categories" value={summary.totalCategories} icon={Tags} />
         <StatCard
@@ -103,6 +183,18 @@ export default function Dashboard() {
           icon={DollarSign}
           iconClassName="bg-success/10 text-success"
         />
+        <StatCard
+          label="Today's Expenses"
+          value={formatCurrency(summary.todayExpenses, currency)}
+          icon={Wallet}
+          iconClassName="bg-destructive/10 text-destructive"
+        />
+        <StatCard
+          label="This Month's Expenses"
+          value={formatCurrency(summary.monthlyExpenses, currency)}
+          icon={CalendarRange}
+          iconClassName="bg-destructive/10 text-destructive"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -111,31 +203,7 @@ export default function Dashboard() {
             <CardTitle>Sales Trend (Last 14 Days)</CardTitle>
           </CardHeader>
           <CardContent className="pl-0">
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={trend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis fontSize={12} tickLine={false} axisLine={false} width={40} />
-                <Tooltip
-                  formatter={(value) => formatCurrency(value, currency)}
-                  labelFormatter={(v) => new Date(v).toLocaleDateString()}
-                  contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 13 }}
-                />
-                <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fill="url(#colorTotal)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <SalesTrendChart trend={trend} currency={currency} />
           </CardContent>
         </Card>
 
@@ -144,24 +212,7 @@ export default function Dashboard() {
             <CardTitle>Best Selling Products</CardTitle>
           </CardHeader>
           <CardContent>
-            {bestSelling.length === 0 ? (
-              <EmptyState title="No sales yet" description="Best sellers will appear here." />
-            ) : (
-              <div className="space-y-4">
-                {bestSelling.map((p, i) => (
-                  <div key={p.id} className="flex items-center gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.units_sold} units sold</p>
-                    </div>
-                    <p className="shrink-0 text-sm font-semibold">{formatCurrency(p.revenue, currency)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <BestSellingList bestSelling={bestSelling} currency={currency} />
           </CardContent>
         </Card>
       </div>
@@ -171,28 +222,7 @@ export default function Dashboard() {
           <CardTitle>Recent Sales</CardTitle>
         </CardHeader>
         <CardContent>
-          {recentSales.length === 0 ? (
-            <EmptyState title="No sales recorded yet" description="Completed sales will show up here." />
-          ) : (
-            <div className="divide-y divide-border">
-              {recentSales.map((sale) => (
-                <div key={sale.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                  <div>
-                    <p className="text-sm font-medium">{sale.invoice_number}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {sale.customer_name} · {formatDateTime(sale.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="capitalize">
-                      {sale.payment_method.replace('_', ' ')}
-                    </Badge>
-                    <p className="font-semibold">{formatCurrency(sale.grand_total, currency)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <RecentSalesList recentSales={recentSales} currency={currency} />
         </CardContent>
       </Card>
     </div>

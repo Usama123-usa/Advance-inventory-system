@@ -3,10 +3,16 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 
-const flatten = (row, relation, key) => {
-  if (!row) return row;
-  const { [relation]: related, ...rest } = row;
-  return { ...rest, [key]: related?.name || null };
+const flattenStockRow = (row) => {
+  const { categories, store_products, ...rest } = row;
+  const sp = Array.isArray(store_products) ? store_products[0] : store_products;
+  return {
+    ...rest,
+    category_name: categories?.name || null,
+    quantity: sp?.stock ?? 0,
+    low_stock_threshold: sp?.low_stock_threshold ?? 0,
+    is_low_stock: sp?.is_low_stock ?? false,
+  };
 };
 
 // GET /api/inventory/current?search=&page=&limit=
@@ -17,7 +23,10 @@ const getCurrentStock = asyncHandler(async (req, res) => {
 
   let queryBuilder = supabase
     .from('products')
-    .select('id, name, sku, barcode, quantity, unit, low_stock_threshold, is_low_stock, categories(name)', { count: 'exact' })
+    .select('id, name, sku, barcode, unit, categories(name), store_products!inner(stock, low_stock_threshold, is_low_stock)', {
+      count: 'exact',
+    })
+    .eq('store_products.store_id', req.storeId)
     .order('name', { ascending: true })
     .range(from, to);
 
@@ -30,7 +39,7 @@ const getCurrentStock = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    data: data.map((row) => flatten(row, 'categories', 'category_name')),
+    data: data.map(flattenStockRow),
     pagination: {
       total: count || 0,
       page: Number(page),
@@ -40,17 +49,35 @@ const getCurrentStock = asyncHandler(async (req, res) => {
   });
 });
 
-// GET /api/inventory/low-stock
+// GET /api/inventory/low-stock?page=&limit=
 const getLowStock = asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const { page = 1, limit = 20 } = req.query;
+  const from = (Number(page) - 1) * Number(limit);
+  const to = from + Number(limit) - 1;
+
+  const { data, error, count } = await supabase
     .from('products')
-    .select('id, name, sku, quantity, low_stock_threshold, unit, categories(name)')
-    .eq('is_low_stock', true)
+    .select('id, name, sku, unit, categories(name), store_products!inner(stock, low_stock_threshold, is_low_stock)', {
+      count: 'exact',
+    })
+    .eq('store_products.store_id', req.storeId)
+    .eq('store_products.is_low_stock', true)
     .eq('status', 'active')
-    .order('quantity', { ascending: true });
+    .order('name', { ascending: true })
+    .range(from, to);
 
   assertNoSupabaseError(error, 'Failed to load low stock items');
-  res.json({ success: true, data: data.map((row) => flatten(row, 'categories', 'category_name')) });
+
+  res.json({
+    success: true,
+    data: data.map(flattenStockRow),
+    pagination: {
+      total: count || 0,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil((count || 0) / Number(limit)),
+    },
+  });
 });
 
 // GET /api/inventory/history?productId=&page=&limit=
@@ -61,7 +88,10 @@ const getHistory = asyncHandler(async (req, res) => {
 
   let queryBuilder = supabase
     .from('inventory_logs')
-    .select('*, products(name), users(name)', { count: 'exact' })
+    .select('id, change_type, quantity, previous_quantity, new_quantity, reason, created_at, products(name), users(name)', {
+      count: 'exact',
+    })
+    .eq('store_id', req.storeId)
     .order('created_at', { ascending: false })
     .range(from, to);
 
@@ -93,7 +123,14 @@ const stockIn = asyncHandler(async (req, res) => {
   const qty = Number(quantity);
   if (!qty || qty <= 0) throw new ApiError(400, 'Quantity must be a positive number');
 
-  const result = await adjustStock({ productId, delta: qty, changeType: 'in', reason: reason || 'Stock added', userId: req.user.id });
+  const result = await adjustStock({
+    storeId: req.storeId,
+    productId,
+    delta: qty,
+    changeType: 'in',
+    reason: reason || 'Stock added',
+    userId: req.user.id,
+  });
   res.json({ success: true, data: result });
 });
 
@@ -103,14 +140,23 @@ const stockOut = asyncHandler(async (req, res) => {
   const qty = Number(quantity);
   if (!qty || qty <= 0) throw new ApiError(400, 'Quantity must be a positive number');
 
-  const result = await adjustStock({ productId, delta: -qty, changeType: 'out', reason: reason || 'Stock removed', userId: req.user.id });
+  const result = await adjustStock({
+    storeId: req.storeId,
+    productId,
+    delta: -qty,
+    changeType: 'out',
+    reason: reason || 'Stock removed',
+    userId: req.user.id,
+  });
   res.json({ success: true, data: result });
 });
 
 // Atomic stock adjustment via the adjust_stock() Postgres function (row-locks
-// the product, validates bounds, updates quantity, and logs it in one transaction).
-async function adjustStock({ productId, delta, changeType, reason, userId, referenceId = null }) {
+// the store_products row, validates bounds, updates stock, and logs it in
+// one transaction).
+async function adjustStock({ storeId, productId, delta, changeType, reason, userId, referenceId = null }) {
   const { data, error } = await supabase.rpc('adjust_stock', {
+    p_store_id: storeId,
     p_product_id: productId,
     p_delta: delta,
     p_change_type: changeType,

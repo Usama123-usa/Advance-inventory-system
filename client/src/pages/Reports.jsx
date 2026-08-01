@@ -3,6 +3,7 @@ import { FileDown, FileSpreadsheet, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useSettings } from '@/context/SettingsContext';
+import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -23,7 +24,10 @@ const REPORT_TABS = [
 
 export default function Reports() {
   const { settings } = useSettings();
-  const currency = settings?.currency || 'USD';
+  const { isAdmin } = useAuth();
+  const currency = settings?.currency || 'PKR';
+
+  const tabs = isAdmin ? [...REPORT_TABS, { id: 'all-stores', label: 'All Stores' }] : REPORT_TABS;
 
   const [tab, setTab] = useState('sales');
   const [period, setPeriod] = useState('daily');
@@ -41,6 +45,8 @@ export default function Reports() {
         ({ data } = await api.get('/reports/top-products', { params: { limit: 20 } }));
       } else if (tab === 'stock') {
         ({ data } = await api.get('/reports/stock'));
+      } else if (tab === 'all-stores') {
+        ({ data } = await api.get('/reports/all-stores'));
       } else {
         ({ data } = await api.get('/reports/profit'));
       }
@@ -75,6 +81,13 @@ export default function Reports() {
         title: 'Stock Report',
         columns: ['Product', 'SKU', 'Category', 'Quantity', 'Unit', 'Purchase Price', 'Selling Price', 'Stock Value'],
         rows: rows.map((r) => [r.name, r.sku || '—', r.category_name || '—', r.quantity, r.unit, r.purchase_price, r.selling_price, r.stock_value]),
+      };
+    }
+    if (tab === 'all-stores') {
+      return {
+        title: 'All Stores Report',
+        columns: ['Store', 'Type', 'Orders', 'Total Sales', 'Total Expenses', 'Net Profit'],
+        rows: rows.map((r) => [r.store_name, r.is_main ? 'Main' : 'Sub', r.total_orders, r.total_sales, r.total_expenses, r.net_profit]),
       };
     }
     return {
@@ -113,7 +126,7 @@ export default function Reports() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-lg border border-border bg-secondary/50 p-1 w-fit">
-          {REPORT_TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -151,6 +164,15 @@ export default function Reports() {
           <p className="text-sm text-muted-foreground">Total Stock Value</p>
           <p className="text-xl font-bold">{formatCurrency(meta.totalStockValue, currency)}</p>
         </Card>
+      )}
+
+      {meta && tab === 'all-stores' && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Sales</p><p className="text-xl font-bold">{formatCurrency(meta.totalSales, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Orders</p><p className="text-xl font-bold">{meta.totalOrders}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Expenses</p><p className="text-xl font-bold">{formatCurrency(meta.totalExpenses, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className="text-xl font-bold text-success">{formatCurrency(meta.netProfit, currency)}</p></Card>
+        </div>
       )}
 
       <Card className="p-4">
@@ -214,6 +236,27 @@ export default function Reports() {
                   <TableCell>{formatCurrency(r.purchase_price, currency)}</TableCell>
                   <TableCell>{formatCurrency(r.selling_price, currency)}</TableCell>
                   <TableCell className="font-semibold">{formatCurrency(r.stock_value, currency)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : tab === 'all-stores' ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Store</TableHead><TableHead>Type</TableHead><TableHead>Orders</TableHead>
+                <TableHead>Total Sales</TableHead><TableHead>Total Expenses</TableHead><TableHead>Net Profit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.store_id}>
+                  <TableCell className="font-medium">{r.store_name}</TableCell>
+                  <TableCell><Badge variant={r.is_main ? 'default' : 'secondary'}>{r.is_main ? 'Main' : 'Sub'}</Badge></TableCell>
+                  <TableCell>{r.total_orders}</TableCell>
+                  <TableCell>{formatCurrency(r.total_sales, currency)}</TableCell>
+                  <TableCell>{formatCurrency(r.total_expenses, currency)}</TableCell>
+                  <TableCell className="font-semibold text-success">{formatCurrency(r.net_profit, currency)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

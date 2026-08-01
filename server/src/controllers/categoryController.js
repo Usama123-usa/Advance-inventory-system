@@ -41,10 +41,10 @@ const getCategoryById = asyncHandler(async (req, res) => {
 
 // POST /api/categories
 const createCategory = asyncHandler(async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, type } = req.body;
   const { data, error } = await supabase
     .from('categories')
-    .insert({ name: name.trim(), description: description || null })
+    .insert({ name: name.trim(), description: description || null, type })
     .select('*')
     .single();
 
@@ -54,10 +54,10 @@ const createCategory = asyncHandler(async (req, res) => {
 
 // PUT /api/categories/:id
 const updateCategory = asyncHandler(async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, type } = req.body;
   const { data, error } = await supabase
     .from('categories')
-    .update({ name: name.trim(), description: description || null })
+    .update({ name: name.trim(), description: description || null, type })
     .eq('id', req.params.id)
     .select('*')
     .maybeSingle();

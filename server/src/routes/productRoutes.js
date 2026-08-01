@@ -2,12 +2,12 @@ const express = require('express');
 const { body } = require('express-validator');
 const productController = require('../controllers/productController');
 const validate = require('../middleware/validate');
-const { authenticate } = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const { authenticate, requireRole, resolveStore } = require('../middleware/auth');
 
 const router = express.Router();
 
 router.use(authenticate);
+router.use(resolveStore);
 
 const productValidation = [
   body('name').trim().notEmpty().withMessage('Product name is required'),
@@ -19,8 +19,8 @@ router.get('/', productController.getProducts);
 router.get('/barcode/:barcode', productController.getProductByBarcode);
 router.get('/:id', productController.getProductById);
 
-router.post('/', upload.single('image'), productValidation, validate, productController.createProduct);
-router.put('/:id', upload.single('image'), productValidation, validate, productController.updateProduct);
-router.delete('/:id', productController.deleteProduct);
+router.post('/', requireRole('admin'), productValidation, validate, productController.createProduct);
+router.put('/:id', requireRole('admin'), productValidation, validate, productController.updateProduct);
+router.delete('/:id', requireRole('admin'), productController.deleteProduct);
 
 module.exports = router;

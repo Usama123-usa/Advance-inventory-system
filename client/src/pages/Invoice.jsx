@@ -6,9 +6,12 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useSettings } from '@/context/SettingsContext';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { generateInvoicePdf } from '@/lib/generateInvoicePdf';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
+
+const PAYMENT_STATUS_VARIANT = { paid: 'success', partial: 'warning', unpaid: 'destructive' };
 
 export default function Invoice() {
   const { id } = useParams();
@@ -36,7 +39,7 @@ export default function Invoice() {
 
   if (!sale) return null;
 
-  const currency = settings?.currency || 'USD';
+  const currency = settings?.currency || 'PKR';
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -86,12 +89,17 @@ export default function Invoice() {
             <p className="text-xs font-semibold uppercase text-muted-foreground">Billed To</p>
             <p className="mt-1 font-medium">{sale.customer_name || 'Walk-in Customer'}</p>
             {sale.customer_phone && <p className="text-sm text-muted-foreground">{sale.customer_phone}</p>}
+            {sale.customer_address && <p className="text-sm text-muted-foreground">{sale.customer_address}</p>}
+            {sale.customer_cnic && <p className="text-sm text-muted-foreground">CNIC: {sale.customer_cnic}</p>}
             {sale.customer_email && <p className="text-sm text-muted-foreground">{sale.customer_email}</p>}
           </div>
           <div className="text-right">
             <p className="text-xs font-semibold uppercase text-muted-foreground">Payment Method</p>
             <p className="mt-1 font-medium capitalize">{sale.payment_method.replace('_', ' ')}</p>
             <p className="text-sm text-muted-foreground">Cashier: {sale.cashier_name}</p>
+            <Badge variant={PAYMENT_STATUS_VARIANT[sale.payment_status] || 'secondary'} className="mt-2 capitalize">
+              {sale.payment_status}
+            </Badge>
           </div>
         </div>
 
@@ -121,7 +129,13 @@ export default function Invoice() {
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(sale.subtotal, currency)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>- {formatCurrency(sale.discount, currency)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span>{formatCurrency(sale.tax, currency)}</span></div>
-            <div className="flex justify-between border-t border-border pt-2 text-base font-bold"><span>Grand Total</span><span className="text-primary">{formatCurrency(sale.grand_total, currency)}</span></div>
+            <div className="flex justify-between border-t border-border pt-2 text-base font-bold"><span>Total Amount</span><span className="text-primary">{formatCurrency(sale.grand_total, currency)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Amount Paid</span><span>{formatCurrency(sale.paid_amount, currency)}</span></div>
+            {Number(sale.remaining_balance) > 0 && (
+              <div className="flex justify-between rounded-md bg-destructive/10 px-2 py-1.5 font-semibold text-destructive">
+                <span>Remaining Balance</span><span>{formatCurrency(sale.remaining_balance, currency)}</span>
+              </div>
+            )}
           </div>
         </div>
 

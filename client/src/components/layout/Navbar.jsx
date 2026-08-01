@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Sun, Moon, LogOut, ChevronDown, UserCircle } from 'lucide-react';
+import { Menu, Sun, Moon, LogOut, ChevronDown, UserCircle, Store } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { useStore } from '@/context/StoreContext';
 
 export function Navbar({ onMenuClick }) {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { stores, currentStoreId, setCurrentStoreId, isAdmin } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -22,6 +24,26 @@ export function Navbar({ onMenuClick }) {
       </button>
 
       <div className="flex-1" />
+
+      {isAdmin && stores.length > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-2.5 py-1.5 text-sm">
+          <Store className="h-4 w-4 text-muted-foreground" />
+          <select
+            value={currentStoreId || ''}
+            onChange={(e) => setCurrentStoreId(e.target.value)}
+            className="bg-transparent text-sm font-medium outline-none"
+          >
+            {stores
+              .filter((s) => s.is_active)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.is_main ? ' (Main)' : ''}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button
@@ -42,7 +64,7 @@ export function Navbar({ onMenuClick }) {
             </div>
             <div className="hidden text-left sm:block">
               <p className="text-sm font-medium leading-tight">{user?.name}</p>
-              <p className="text-xs capitalize leading-tight text-muted-foreground">{user?.role}</p>
+              <p className="text-xs capitalize leading-tight text-muted-foreground">{user?.role?.replace('_', ' ')}</p>
             </div>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </button>

@@ -24,9 +24,11 @@ export default function Inventory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search);
+  const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+  const [lowStockPage, setLowStockPage] = useState(1);
+  const [lowStockPagination, setLowStockPagination] = useState({ total: 0, totalPages: 1 });
 
   const [adjustDialog, setAdjustDialog] = useState(null); // { type: 'in'|'out', product }
   const [quantity, setQuantity] = useState('');
@@ -36,7 +38,7 @@ export default function Inventory() {
   const fetchCurrent = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/inventory/current', { params: { search: debouncedSearch, page, limit: 10 } });
+      const { data } = await api.get('/inventory/current', { params: { search: debouncedSearch, page, limit: 20 } });
       setStock(data.data);
       setPagination(data.pagination);
     } catch (err) {
@@ -47,14 +49,15 @@ export default function Inventory() {
   }, [debouncedSearch, page]);
 
   const fetchLowStock = useCallback(async () => {
-    const { data } = await api.get('/inventory/low-stock');
+    const { data } = await api.get('/inventory/low-stock', { params: { page: lowStockPage, limit: 20 } });
     setLowStock(data.data);
-  }, []);
+    setLowStockPagination(data.pagination);
+  }, [lowStockPage]);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/inventory/history', { params: { page, limit: 15 } });
+      const { data } = await api.get('/inventory/history', { params: { page, limit: 20 } });
       setHistory(data.data);
       setPagination(data.pagination);
     } finally {
@@ -100,7 +103,7 @@ export default function Inventory() {
 
   const TABS = [
     { id: 'current', label: 'Current Stock' },
-    { id: 'low-stock', label: `Low Stock (${lowStock.length})` },
+    { id: 'low-stock', label: `Low Stock (${lowStockPagination.total})` },
     { id: 'history', label: 'History' },
   ];
 
@@ -187,32 +190,35 @@ export default function Inventory() {
           {lowStock.length === 0 ? (
             <EmptyState icon={AlertTriangle} title="Nothing low on stock" description="All products are above their threshold." />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Threshold</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lowStock.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{p.category_name || '—'}</TableCell>
-                    <TableCell className="font-semibold text-destructive">{p.quantity} {p.unit}</TableCell>
-                    <TableCell>{p.low_stock_threshold}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => openAdjust('in', p)}>
-                        <ArrowUpCircle className="h-4 w-4 text-success" /> Restock
-                      </Button>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead>Threshold</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {lowStock.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{p.category_name || '—'}</TableCell>
+                      <TableCell className="font-semibold text-destructive">{p.quantity} {p.unit}</TableCell>
+                      <TableCell>{p.low_stock_threshold}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => openAdjust('in', p)}>
+                          <ArrowUpCircle className="h-4 w-4 text-success" /> Restock
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Pagination page={lowStockPage} totalPages={lowStockPagination.totalPages} total={lowStockPagination.total} onPageChange={setLowStockPage} />
+            </>
           )}
         </Card>
       )}

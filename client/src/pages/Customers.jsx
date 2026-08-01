@@ -23,12 +23,12 @@ const emptyForm = { name: '', phone: '', email: '', address: '' };
 
 export default function Customers() {
   const { settings } = useSettings();
-  const currency = settings?.currency || 'USD';
+  const currency = settings?.currency || 'PKR';
 
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search);
+  const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
 
@@ -47,7 +47,7 @@ export default function Customers() {
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/customers', { params: { search: debouncedSearch, page, limit: 10 } });
+      const { data } = await api.get('/customers', { params: { search: debouncedSearch, page, limit: 20 } });
       setCustomers(data.data);
       setPagination(data.pagination);
     } catch (err) {

@@ -11,6 +11,7 @@ const sanitizeUser = (user) => ({
   name: user.name,
   email: user.email,
   role: user.role,
+  storeId: user.store_id ?? null,
 });
 
 // POST /api/auth/login
@@ -19,7 +20,7 @@ const login = asyncHandler(async (req, res) => {
 
   const { data: user, error } = await supabase
     .from('users')
-    .select('id, name, email, password_hash, role, is_active')
+    .select('id, name, email, password_hash, role, is_active, store_id')
     .eq('email', email.toLowerCase().trim())
     .maybeSingle();
 
@@ -33,7 +34,7 @@ const login = asyncHandler(async (req, res) => {
     throw new ApiError(401, 'Invalid email or password');
   }
 
-  const token = signToken({ sub: user.id, role: user.role });
+  const token = signToken({ sub: user.id, role: user.role, store_id: user.store_id ?? null });
 
   res.json({
     success: true,
@@ -41,7 +42,7 @@ const login = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/auth/register  (creates additional staff/admin accounts; admin-only in routes)
+// POST /api/auth/register  (creates additional Main Store staff/admin accounts; admin-only in routes)
 const register = asyncHandler(async (req, res) => {
   const { name, email, password, role } = req.body;
   const normalizedEmail = email.toLowerCase().trim();
@@ -56,17 +57,32 @@ const register = asyncHandler(async (req, res) => {
     throw new ApiError(409, 'A user with this email already exists');
   }
 
+  const { data: mainStore, error: storeError } = await supabase
+    .from('stores')
+    .select('id')
+    .eq('is_main', true)
+    .maybeSingle();
+
+  if (storeError || !mainStore) throw new ApiError(500, 'Main Store is not configured');
+
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const newRole = role === 'admin' ? 'admin' : 'staff';
 
   const { data: user, error } = await supabase
     .from('users')
-    .insert({ name: name.trim(), email: normalizedEmail, password_hash: passwordHash, role: role || 'staff' })
-    .select('id, name, email, role')
+    .insert({
+      name: name.trim(),
+      email: normalizedEmail,
+      password_hash: passwordHash,
+      role: newRole,
+      store_id: newRole === 'admin' ? null : mainStore.id,
+    })
+    .select('id, name, email, role, store_id')
     .single();
 
   if (error) throw new ApiError(500, 'Failed to create user');
 
-  res.status(201).json({ success: true, data: { user } });
+  res.status(201).json({ success: true, data: { user: sanitizeUser(user) } });
 });
 
 // GET /api/auth/me

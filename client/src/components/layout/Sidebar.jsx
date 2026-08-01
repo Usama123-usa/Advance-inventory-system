@@ -9,22 +9,32 @@ import {
   BarChart3,
   Settings,
   Store,
+  Wallet,
+  Wallet2,
+  Building2,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/pos', label: 'Point of Sale', icon: ShoppingCart },
-  { to: '/products', label: 'Products', icon: Package },
-  { to: '/categories', label: 'Categories', icon: Tags },
-  { to: '/inventory', label: 'Inventory', icon: Boxes },
-  { to: '/customers', label: 'Customers', icon: Users },
-  { to: '/reports', label: 'Reports', icon: BarChart3 },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/pos', label: 'Point of Sale', icon: ShoppingCart, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/products', label: 'Products', icon: Package, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/categories', label: 'Categories', icon: Tags, roles: ['admin', 'staff'] },
+  { to: '/inventory', label: 'Inventory', icon: Boxes, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/expenses', label: 'Expenses', icon: Wallet, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/pending-payments', label: 'Pending Payments', icon: Wallet2, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/store-management', label: 'Store Management', icon: Building2, roles: ['admin'] },
+  { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
 ];
 
 export function Sidebar({ open, onClose }) {
+  const { user } = useAuth();
+  const items = NAV_ITEMS.filter((item) => item.roles.includes(user?.role));
+
   return (
     <>
       {open && (
@@ -49,7 +59,7 @@ export function Sidebar({ open, onClose }) {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

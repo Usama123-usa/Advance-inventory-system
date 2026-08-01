@@ -21,7 +21,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
   const { data: user, error } = await supabase
     .from('users')
-    .select('id, name, email, role, is_active')
+    .select('id, name, email, role, is_active, store_id')
     .eq('id', decoded.sub)
     .maybeSingle();
 
@@ -42,4 +42,48 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireRole };
+// Resolves req.storeId — the store a request should be scoped to.
+// Non-admins are ALWAYS locked to their own store_id, regardless of what
+// the client sends (data isolation must not depend on trusting the client).
+// Admins may switch stores via ?storeId=, validated against the stores
+// table; they default to the Main Store when no valid storeId is supplied.
+const resolveStore = asyncHandler(async (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    if (!req.user.store_id) {
+      throw new ApiError(403, 'Your account is not assigned to a store');
+    }
+    req.storeId = req.user.store_id;
+    return next();
+  }
+
+  const requestedStoreId = req.query.storeId;
+
+  if (requestedStoreId) {
+    const { data: store, error } = await supabase
+      .from('stores')
+      .select('id')
+      .eq('id', requestedStoreId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) throw new ApiError(500, 'Failed to verify store');
+    if (!store) throw new ApiError(404, 'Store not found');
+
+    req.storeId = store.id;
+    return next();
+  }
+
+  const { data: mainStore, error: mainError } = await supabase
+    .from('stores')
+    .select('id')
+    .eq('is_main', true)
+    .maybeSingle();
+
+  if (mainError) throw new ApiError(500, 'Failed to resolve Main Store');
+  if (!mainStore) throw new ApiError(500, 'Main Store is not configured');
+
+  req.storeId = mainStore.id;
+  next();
+});
+
+module.exports = { authenticate, requireRole, resolveStore };

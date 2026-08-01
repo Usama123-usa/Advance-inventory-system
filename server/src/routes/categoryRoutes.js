@@ -11,19 +11,14 @@ router.use(authenticate);
 router.get('/', categoryController.getCategories);
 router.get('/:id', categoryController.getCategoryById);
 
-router.post(
-  '/',
-  [body('name').trim().notEmpty().withMessage('Category name is required')],
-  validate,
-  categoryController.createCategory
-);
+const categoryValidation = [
+  body('name').trim().notEmpty().withMessage('Category name is required'),
+  body('type').isIn(['tiles', 'other']).withMessage('Category type must be "tiles" or "other"'),
+];
 
-router.put(
-  '/:id',
-  [body('name').trim().notEmpty().withMessage('Category name is required')],
-  validate,
-  categoryController.updateCategory
-);
+router.post('/', categoryValidation, validate, categoryController.createCategory);
+
+router.put('/:id', categoryValidation, validate, categoryController.updateCategory);
 
 router.delete('/:id', categoryController.deleteCategory);
 

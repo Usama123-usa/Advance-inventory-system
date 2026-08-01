@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import api from '@/lib/api';
+import { cachedGet } from '@/lib/api';
 import { useAuth } from './AuthContext';
 
 const SettingsContext = createContext(null);
@@ -20,9 +20,11 @@ export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  // Cached for 5 minutes on the passive initial load; explicit refresh()
+  // calls (e.g. after saving Settings) always force a fresh fetch.
+  const load = useCallback(async (force = false) => {
     try {
-      const { data } = await api.get('/settings');
+      const { data } = await cachedGet('/settings', undefined, { force });
       if (data.data) setSettings(data.data);
     } catch {
       // fall back to defaults silently
@@ -31,10 +33,12 @@ export function SettingsProvider({ children }) {
     }
   }, []);
 
+  const refresh = useCallback(() => load(true), [load]);
+
   useEffect(() => {
-    if (user) refresh();
+    if (user) load(false);
     else setLoading(false);
-  }, [user, refresh]);
+  }, [user, load]);
 
   return (
     <SettingsContext.Provider value={{ settings, loading, refresh }}>{children}</SettingsContext.Provider>

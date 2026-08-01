@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDateTime } from './utils';
 
 export function generateInvoicePdf(sale, settings) {
-  const currency = settings?.currency || 'USD';
+  const currency = settings?.currency || 'PKR';
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const marginX = 40;
   let y = 50;
@@ -39,6 +39,8 @@ export function generateInvoicePdf(sale, settings) {
   y += 14;
   doc.text(sale.customer_name || 'Walk-in Customer', marginX, y);
   if (sale.customer_phone) { y += 14; doc.text(sale.customer_phone, marginX, y); }
+  if (sale.customer_address) { y += 14; doc.text(sale.customer_address, marginX, y); }
+  if (sale.customer_cnic) { y += 14; doc.text(`CNIC: ${sale.customer_cnic}`, marginX, y); }
   if (sale.customer_email) { y += 14; doc.text(sale.customer_email, marginX, y); }
 
   y += 20;
@@ -64,11 +66,19 @@ export function generateInvoicePdf(sale, settings) {
     ['Subtotal', formatCurrency(sale.subtotal, currency)],
     ['Discount', `- ${formatCurrency(sale.discount, currency)}`],
     ['Tax', formatCurrency(sale.tax, currency)],
-    ['Grand Total', formatCurrency(sale.grand_total, currency)],
+    ['Total Amount', formatCurrency(sale.grand_total, currency)],
+    ['Amount Paid', formatCurrency(sale.paid_amount, currency)],
   ];
 
+  if (Number(sale.remaining_balance) > 0) {
+    summaryRows.push(['Remaining Balance', formatCurrency(sale.remaining_balance, currency)]);
+  }
+  summaryRows.push(['Payment Status', String(sale.payment_status || '').toUpperCase()]);
+
+  const totalRowIndex = summaryRows.findIndex(([label]) => label === 'Total Amount');
+
   summaryRows.forEach(([label, value], i) => {
-    const isTotal = i === summaryRows.length - 1;
+    const isTotal = i === totalRowIndex;
     doc.setFont('helvetica', isTotal ? 'bold' : 'normal');
     doc.setFontSize(isTotal ? 12 : 10);
     doc.text(label, 420, finalY, { align: 'left' });

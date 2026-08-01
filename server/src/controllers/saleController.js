@@ -13,7 +13,11 @@ const getSales = asyncHandler(async (req, res) => {
 
   let queryBuilder = supabase
     .from('sales')
-    .select('*, customers(name), users(name)', { count: 'exact' })
+    .select(
+      'id, invoice_number, grand_total, payment_method, payment_status, paid_amount, remaining_balance, created_at, customer_name, customer_phone, customers(name, phone), users(name)',
+      { count: 'exact' }
+    )
+    .eq('store_id', req.storeId)
     .order('created_at', { ascending: false })
     .range(rangeFrom, rangeTo);
 
@@ -24,9 +28,12 @@ const getSales = asyncHandler(async (req, res) => {
   const { data, error, count } = await queryBuilder;
   assertNoSupabaseError(error, 'Failed to load sales');
 
-  const rows = data.map(({ customers, users, ...rest }) => ({
+  // A sale's own customer_name/phone (free-text, filled in for partial
+  // payments/walk-ins) take priority over the linked customer record.
+  const rows = data.map(({ customers, users, customer_name, customer_phone, ...rest }) => ({
     ...rest,
-    customer_name: customers?.name || null,
+    customer_name: customer_name || customers?.name || null,
+    customer_phone: customer_phone || customers?.phone || null,
     cashier_name: users?.name || null,
   }));
 
@@ -48,6 +55,7 @@ const getSaleById = asyncHandler(async (req, res) => {
     .from('sales')
     .select('*, customers(name, phone, email, address), users(name)')
     .eq('id', req.params.id)
+    .eq('store_id', req.storeId)
     .maybeSingle();
 
   assertNoSupabaseError(error, 'Failed to load sale');
@@ -55,7 +63,7 @@ const getSaleById = asyncHandler(async (req, res) => {
 
   const { data: items, error: itemsError } = await supabase
     .from('sale_items')
-    .select('*, products(sku, barcode)')
+    .select('id, product_name, quantity, unit_price, total, products(sku, barcode)')
     .eq('sale_id', req.params.id)
     .order('created_at', { ascending: true });
 
@@ -66,38 +74,73 @@ const getSaleById = asyncHandler(async (req, res) => {
     success: true,
     data: {
       ...saleRest,
-      customer_name: customers?.name || null,
-      customer_phone: customers?.phone || null,
+      customer_name: saleRest.customer_name || customers?.name || null,
+      customer_phone: saleRest.customer_phone || customers?.phone || null,
       customer_email: customers?.email || null,
-      customer_address: customers?.address || null,
+      customer_address: saleRest.customer_address || customers?.address || null,
+      customer_cnic: saleRest.customer_cnic || null,
       cashier_name: users?.name || null,
       items: items.map(({ products, ...item }) => ({ ...item, sku: products?.sku, barcode: products?.barcode })),
     },
   });
 });
 
+// GET /api/sales/pending-payments  -- customers with an outstanding balance
+// for the current store (Feature: Pending Payments tracking)
+const getPendingPayments = asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('customer_balances')
+    .select('id, customer_name, customer_phone, customer_cnic, total_remaining_balance, updated_at')
+    .eq('store_id', req.storeId)
+    .gt('total_remaining_balance', 0)
+    .order('updated_at', { ascending: false });
+
+  assertNoSupabaseError(error, 'Failed to load pending payments');
+  res.json({ success: true, data });
+});
+
 // POST /api/sales
-// body: { customerId, items: [{ productId, quantity }], discount, paymentMethod, notes }
+// body: { customerId, items: [{ productId, quantity }], discount, paymentMethod,
+//         notes, paidAmount, customerName, customerPhone, customerAddress, customerCnic }
 // Delegates to the create_sale() Postgres function so stock validation,
-// totals, sale/sale_items/inventory_logs writes all happen atomically.
+// totals, sale/sale_items/inventory_logs/customer_balances writes all happen
+// atomically. Omitting paidAmount means "paid in full" — customer info stays
+// fully optional in that case; it only matters for partial payment tracking.
 const createSale = asyncHandler(async (req, res) => {
-  const { customerId, items, discount = 0, paymentMethod = 'cash', notes = '' } = req.body;
+  const {
+    customerId,
+    items,
+    discount = 0,
+    paymentMethod = 'cash',
+    notes = '',
+    paidAmount,
+    customerName,
+    customerPhone,
+    customerAddress,
+    customerCnic,
+  } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     throw new ApiError(400, 'At least one item is required to complete a sale');
   }
 
   const { data: sale, error } = await supabase.rpc('create_sale', {
+    p_store_id: req.storeId,
     p_customer_id: customerId || null,
     p_cashier_id: req.user.id,
     p_items: items,
     p_discount: Number(discount) || 0,
     p_payment_method: paymentMethod,
     p_notes: notes,
+    p_paid_amount: paidAmount === undefined || paidAmount === null || paidAmount === '' ? null : Number(paidAmount),
+    p_customer_name: customerName || null,
+    p_customer_phone: customerPhone || null,
+    p_customer_address: customerAddress || null,
+    p_customer_cnic: customerCnic || null,
   });
 
   assertNoSupabaseError(error, 'Failed to complete sale');
   res.status(201).json({ success: true, data: sale });
 });
 
-module.exports = { getSales, getSaleById, createSale };
+module.exports = { getSales, getSaleById, getPendingPayments, createSale };

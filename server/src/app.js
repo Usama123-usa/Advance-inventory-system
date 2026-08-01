@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const compression = require('compression');
 
 const authRoutes = require('./routes/authRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
@@ -12,12 +13,16 @@ const saleRoutes = require('./routes/saleRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const storeRoutes = require('./routes/storeRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
+const tileOptionRoutes = require('./routes/tileOptionRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
 app.set('trust proxy', 1);
 app.use(helmet());
+app.use(compression());
 
 const corsOrigins = (process.env.CORS_ORIGIN || '*').split(',').map((o) => o.trim());
 app.use(
@@ -47,6 +52,9 @@ app.use('/api/sales', saleRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/stores', storeRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/tile-options', tileOptionRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

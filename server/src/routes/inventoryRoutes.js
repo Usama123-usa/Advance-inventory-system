@@ -2,11 +2,12 @@ const express = require('express');
 const { body } = require('express-validator');
 const inventoryController = require('../controllers/inventoryController');
 const validate = require('../middleware/validate');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, resolveStore } = require('../middleware/auth');
 
 const router = express.Router();
 
 router.use(authenticate);
+router.use(resolveStore);
 
 router.get('/current', inventoryController.getCurrentStock);
 router.get('/low-stock', inventoryController.getLowStock);

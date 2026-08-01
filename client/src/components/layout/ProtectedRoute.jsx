@@ -18,3 +18,11 @@ export function ProtectedRoute({ children, requireAdmin = false }) {
 
   return children;
 }
+
+// Restricts a single nested route to specific roles without re-wrapping
+// AppLayout (auth/loading is already handled by the outer ProtectedRoute).
+export function RoleGate({ roles, children }) {
+  const { user } = useAuth();
+  if (!user || !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  return children;
+}

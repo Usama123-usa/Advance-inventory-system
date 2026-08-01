@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, ScanBarcode, ShoppingCart, Trash2, Banknote, CreditCard, Landmark } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -11,9 +11,12 @@ import { Card } from '@/components/ui/Card';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { Pagination } from '@/components/ui/Pagination';
 import { ProductCard } from '@/components/pos/ProductCard';
 import { CartItemRow } from '@/components/pos/CartItemRow';
 import { formatCurrency, cn } from '@/lib/utils';
+
+const PAGE_SIZE = 24;
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash', icon: Banknote },
@@ -24,9 +27,11 @@ const PAYMENT_METHODS = [
 export default function POS() {
   const navigate = useNavigate();
   const { settings } = useSettings();
-  const currency = settings?.currency || 'USD';
+  const currency = settings?.currency || 'PKR';
 
   const [products, setProducts] = useState([]);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+  const [page, setPage] = useState(1);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
@@ -40,6 +45,14 @@ export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [completing, setCompleting] = useState(false);
 
+  // Customer info + amount paid are optional for a full payment — they only
+  // matter for tracking a partial payment's remaining balance.
+  const [amountPaid, setAmountPaid] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [customerCnic, setCustomerCnic] = useState('');
+
   const taxRate = Number(settings?.tax_rate || 0);
 
   useEffect(() => {
@@ -50,17 +63,19 @@ export default function POS() {
     setLoadingProducts(true);
     try {
       const { data } = await api.get('/products', {
-        params: { search: debouncedSearch, status: 'active', limit: 24 },
+        params: { search: debouncedSearch, status: 'active', page, limit: PAGE_SIZE },
       });
       setProducts(data.data);
+      setPagination(data.pagination);
     } finally {
       setLoadingProducts(false);
     }
-  }, [debouncedSearch]);
+  }, [debouncedSearch, page]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => setPage(1), [debouncedSearch]);
 
-  const addToCart = (product) => {
+  const addToCart = useCallback((product) => {
     setCart((prev) => {
       const existing = prev.find((i) => i.id === product.id);
       if (existing) {
@@ -72,7 +87,7 @@ export default function POS() {
       }
       return [...prev, { ...product, qty: 1 }];
     });
-  };
+  }, []);
 
   const handleBarcodeSearch = async (e) => {
     e.preventDefault();
@@ -86,7 +101,7 @@ export default function POS() {
     }
   };
 
-  const updateQty = (productId, delta) => {
+  const updateQty = useCallback((productId, delta) => {
     setCart((prev) =>
       prev
         .map((i) => {
@@ -100,15 +115,49 @@ export default function POS() {
         })
         .filter((i) => i.qty > 0)
     );
+  }, []);
+
+  const increaseQty = useCallback((productId) => updateQty(productId, 1), [updateQty]);
+  const decreaseQty = useCallback((productId) => updateQty(productId, -1), [updateQty]);
+
+  const removeFromCart = useCallback((productId) => setCart((prev) => prev.filter((i) => i.id !== productId)), []);
+
+  const { subtotal, discountAmount, taxAmount, grandTotal } = useMemo(() => {
+    const sub = cart.reduce((sum, i) => sum + i.selling_price * i.qty, 0);
+    const discountAmt = Number(discount) || 0;
+    const taxable = Math.max(sub - discountAmt, 0);
+    const tax = Number(((taxable * taxRate) / 100).toFixed(2));
+    const grand = Number((taxable + tax).toFixed(2));
+    return { subtotal: sub, discountAmount: discountAmt, taxAmount: tax, grandTotal: grand };
+  }, [cart, discount, taxRate]);
+
+  // Blank "Amount Paid" means paid in full — the backend defaults to that
+  // when paidAmount is omitted, this is just the matching UI preview.
+  const paidAmountValue = amountPaid === '' ? grandTotal : Math.min(Math.max(Number(amountPaid) || 0, 0), grandTotal);
+  const remainingBalance = Math.max(grandTotal - paidAmountValue, 0);
+  const paymentStatusPreview = remainingBalance <= 0 ? 'paid' : paidAmountValue <= 0 ? 'unpaid' : 'partial';
+
+  const handleCustomerSelect = (value) => {
+    setCustomerId(value);
+    if (value === 'walk-in') return;
+    const selected = customers.find((c) => c.id === value);
+    if (selected) {
+      setCustomerName(selected.name || '');
+      setCustomerPhone(selected.phone || '');
+      setCustomerAddress(selected.address || '');
+    }
   };
 
-  const removeFromCart = (productId) => setCart((prev) => prev.filter((i) => i.id !== productId));
-
-  const subtotal = cart.reduce((sum, i) => sum + i.selling_price * i.qty, 0);
-  const discountAmount = Number(discount) || 0;
-  const taxableAmount = Math.max(subtotal - discountAmount, 0);
-  const taxAmount = Number(((taxableAmount * taxRate) / 100).toFixed(2));
-  const grandTotal = Number((taxableAmount + taxAmount).toFixed(2));
+  const resetCheckoutFields = () => {
+    setCart([]);
+    setDiscount('0');
+    setAmountPaid('');
+    setCustomerId('walk-in');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerAddress('');
+    setCustomerCnic('');
+  };
 
   const handleCompleteSale = async () => {
     if (cart.length === 0) {
@@ -122,10 +171,14 @@ export default function POS() {
         items: cart.map((i) => ({ productId: i.id, quantity: i.qty })),
         discount: discountAmount,
         paymentMethod,
+        paidAmount: amountPaid === '' ? undefined : Number(amountPaid),
+        customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone.trim() || undefined,
+        customerAddress: customerAddress.trim() || undefined,
+        customerCnic: customerCnic.trim() || undefined,
       });
       toast.success('Sale completed successfully');
-      setCart([]);
-      setDiscount('0');
+      resetCheckoutFields();
       navigate(`/invoice/${data.data.id}`);
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -163,11 +216,14 @@ export default function POS() {
           ) : products.length === 0 ? (
             <EmptyState title="No products found" description="Try a different search term." />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} currency={currency} onClick={addToCart} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+                {products.map((p) => (
+                  <ProductCard key={p.id} product={p} currency={currency} onClick={addToCart} />
+                ))}
+              </div>
+              <Pagination page={page} totalPages={pagination.totalPages} total={pagination.total} onPageChange={setPage} />
+            </>
           )}
         </Card>
       </div>
@@ -194,22 +250,34 @@ export default function POS() {
                 key={item.id}
                 item={item}
                 currency={currency}
-                onIncrease={() => updateQty(item.id, 1)}
-                onDecrease={() => updateQty(item.id, -1)}
-                onRemove={() => removeFromCart(item.id)}
+                onIncrease={increaseQty}
+                onDecrease={decreaseQty}
+                onRemove={removeFromCart}
               />
             ))
           )}
         </div>
 
         <div className="space-y-3 border-t border-border p-4">
-          <Select value={customerId} onValueChange={setCustomerId}>
+          <Select value={customerId} onValueChange={handleCustomerSelect}>
             <SelectTrigger><SelectValue placeholder="Customer" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="walk-in">Walk-in Customer</SelectItem>
               {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
+
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              Customer info <span className="font-normal">(optional — only needed for partial payment tracking)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Name" className="h-8 text-xs" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+              <Input placeholder="Phone" className="h-8 text-xs" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+              <Input placeholder="Address" className="h-8 text-xs" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+              <Input placeholder="CNIC" className="h-8 text-xs" value={customerCnic} onChange={(e) => setCustomerCnic(e.target.value)} />
+            </div>
+          </div>
 
           <div className="space-y-1.5 text-sm">
             <div className="flex items-center justify-between">
@@ -234,6 +302,37 @@ export default function POS() {
             <div className="flex items-center justify-between border-t border-border pt-2 text-base font-bold">
               <span>Grand Total</span>
               <span className="text-primary">{formatCurrency(grandTotal, currency)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Amount Paid</span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder={grandTotal.toFixed(2)}
+                value={amountPaid}
+                onChange={(e) => setAmountPaid(e.target.value)}
+                className="h-7 w-24 text-right"
+              />
+            </div>
+            {remainingBalance > 0 && (
+              <div className="flex items-center justify-between rounded-md bg-destructive/10 px-2 py-1.5 text-destructive">
+                <span className="text-xs font-medium">Remaining Balance</span>
+                <span className="text-sm font-bold">{formatCurrency(remainingBalance, currency)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Payment Status</span>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 font-medium capitalize',
+                  paymentStatusPreview === 'paid' && 'bg-success/10 text-success',
+                  paymentStatusPreview === 'partial' && 'bg-warning/10 text-warning',
+                  paymentStatusPreview === 'unpaid' && 'bg-destructive/10 text-destructive'
+                )}
+              >
+                {paymentStatusPreview}
+              </span>
             </div>
           </div>
 

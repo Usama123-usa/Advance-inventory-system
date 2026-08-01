@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { clearCurrentStoreId } from '@/lib/storeScope';
 
 const AuthContext = createContext(null);
 
@@ -41,11 +42,22 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    clearCurrentStoreId();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin: user?.role === 'admin' }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        isAdmin: user?.role === 'admin',
+        isStoreManager: user?.role === 'store_manager',
+        isStaff: user?.role === 'staff',
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

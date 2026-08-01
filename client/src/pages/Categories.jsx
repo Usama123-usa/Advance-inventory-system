@@ -18,13 +18,13 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { formatDate } from '@/lib/utils';
 
-const emptyForm = { name: '', description: '' };
+const emptyForm = { name: '', description: '', type: 'other' };
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search);
+  const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
 
@@ -63,7 +63,7 @@ export default function Categories() {
 
   const openEdit = (category) => {
     setEditing(category);
-    setForm({ name: category.name, description: category.description || '' });
+    setForm({ name: category.name, description: category.description || '', type: category.type || 'other' });
     setDialogOpen(true);
   };
 
@@ -145,6 +145,7 @@ export default function Categories() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Products</TableHead>
                   <TableHead>Created</TableHead>
@@ -155,6 +156,11 @@ export default function Categories() {
                 {categories.map((cat) => (
                   <TableRow key={cat.id}>
                     <TableCell className="font-medium">{cat.name}</TableCell>
+                    <TableCell>
+                      <Badge variant={cat.type === 'tiles' ? 'default' : 'secondary'} className="capitalize">
+                        {cat.type}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground">
                       {cat.description || '—'}
                     </TableCell>
@@ -196,6 +202,34 @@ export default function Categories() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Beverages"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Category Type</Label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="type"
+                    value="tiles"
+                    checked={form.type === 'tiles'}
+                    onChange={() => setForm({ ...form, type: 'tiles' })}
+                    className="h-4 w-4 border-border"
+                  />
+                  Tiles
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="type"
+                    value="other"
+                    checked={form.type === 'other'}
+                    onChange={() => setForm({ ...form, type: 'other' })}
+                    className="h-4 w-4 border-border"
+                  />
+                  Other
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">Determines which Add Product form is shown for this category.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="description">Description</Label>
