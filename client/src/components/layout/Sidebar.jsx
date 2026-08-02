@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/pos', label: 'Point of Sale', icon: ShoppingCart, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/products', label: 'Products', icon: Package, roles: ['admin', 'staff', 'store_manager'] },
-  { to: '/categories', label: 'Categories', icon: Tags, roles: ['admin', 'staff'] },
+  { to: '/categories', label: 'Categories', icon: Tags, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/inventory', label: 'Inventory', icon: Boxes, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/expenses', label: 'Expenses', icon: Wallet, roles: ['admin', 'staff', 'store_manager'] },

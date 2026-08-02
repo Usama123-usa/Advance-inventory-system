@@ -7,12 +7,15 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const router = express.Router();
 
 router.use(authenticate);
-router.use(requireRole('admin'));
 
-router.get('/', tileOptionController.getTileOptions);
+// Store managers need these dropdown lists (and to add new values to them)
+// to fill out the Tiles product form for their own store; only admins may
+// delete a shared option value since that affects every store's dropdowns.
+router.get('/', requireRole('admin', 'store_manager'), tileOptionController.getTileOptions);
 
 router.post(
   '/',
+  requireRole('admin', 'store_manager'),
   [
     body('fieldName')
       .isIn(['size', 'glaze_mate', 'sqr_meter', 'packing_per_box', 'rate_per_meter'])
@@ -23,6 +26,6 @@ router.post(
   tileOptionController.createTileOption
 );
 
-router.delete('/:id', tileOptionController.deleteTileOption);
+router.delete('/:id', requireRole('admin'), tileOptionController.deleteTileOption);
 
 module.exports = router;

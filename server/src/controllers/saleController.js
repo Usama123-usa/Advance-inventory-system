@@ -63,7 +63,7 @@ const getSaleById = asyncHandler(async (req, res) => {
 
   const { data: items, error: itemsError } = await supabase
     .from('sale_items')
-    .select('id, product_name, quantity, unit_price, total, products(sku, barcode)')
+    .select('id, product_name, quantity, unit_price, total, sqr_meter, rate_per_meter, products(sku, barcode)')
     .eq('sale_id', req.params.id)
     .order('created_at', { ascending: true });
 

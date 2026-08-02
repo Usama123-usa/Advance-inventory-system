@@ -19,8 +19,10 @@ router.get('/', productController.getProducts);
 router.get('/barcode/:barcode', productController.getProductByBarcode);
 router.get('/:id', productController.getProductById);
 
-router.post('/', requireRole('admin'), productValidation, validate, productController.createProduct);
-router.put('/:id', requireRole('admin'), productValidation, validate, productController.updateProduct);
+// Store managers can add/edit products for their own sub-store; only admins
+// may delete a product outright (it's a global catalog entry shared by every store).
+router.post('/', requireRole('admin', 'store_manager'), productValidation, validate, productController.createProduct);
+router.put('/:id', requireRole('admin', 'store_manager'), productValidation, validate, productController.updateProduct);
 router.delete('/:id', requireRole('admin'), productController.deleteProduct);
 
 module.exports = router;

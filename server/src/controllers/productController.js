@@ -97,13 +97,22 @@ const buildProductPayload = (body) => {
   const isTiles = productType === 'tiles';
   const isOther = productType === 'other';
 
+  const sqrMeter = isTiles ? numOrNull(body.sqrMeter) : null;
+  const ratePerMeter = isTiles ? numOrNull(body.ratePerMeter) : null;
+  // Tiles are priced by rate-per-square-meter, not a manually typed flat
+  // price: selling_price is always derived as sqm-per-box × rate-per-meter
+  // so every screen that reads selling_price (POS cart, product list,
+  // dashboards) — and the sale total computed in create_sale() — line up
+  // with the meter rate the box was configured with.
+  const tileSellingPrice = sqrMeter != null && ratePerMeter != null ? Number((sqrMeter * ratePerMeter).toFixed(2)) : null;
+
   return {
     name: body.name.trim(),
     barcode: body.barcode?.trim() || null,
     sku: body.sku?.trim() || null,
     category_id: body.categoryId || null,
     purchase_price: Number(body.purchasePrice) || 0,
-    selling_price: Number(body.sellingPrice) || 0,
+    selling_price: isTiles ? tileSellingPrice ?? (Number(body.sellingPrice) || 0) : Number(body.sellingPrice) || 0,
     // Tiles/Other forms don't expose a raw "unit" input — derive a sensible
     // one so existing "{quantity} {unit}" displays (Products table, POS
     // cart) keep working. Legacy callers can still pass body.unit directly.
@@ -113,51 +122,73 @@ const buildProductPayload = (body) => {
     product_type: productType,
     size: isTiles ? body.size?.trim() || null : null,
     glaze_grade: isTiles ? body.glazeGrade?.trim() || null : null,
-    sqr_meter: isTiles ? numOrNull(body.sqrMeter) : null,
+    sqr_meter: sqrMeter,
     packing_per_box: isTiles ? numOrNull(body.packingPerBox) : null,
-    rate_per_meter: isTiles ? numOrNull(body.ratePerMeter) : null,
+    rate_per_meter: ratePerMeter,
     article: isOther ? body.article?.trim() || null : null,
     company: isOther ? body.company?.trim() || null : null,
     unit_type: isOther && (body.unitType === 'box' || body.unitType === 'pcs') ? body.unitType : null,
   };
 };
 
-// POST /api/products  (admin only — creates the global product, plus a
-// store_products row for the Main Store and any storeIds selected via the
-// "Add to which stores?" multi-select. Selected sub-stores start at zero
-// stock; only the Main Store gets the entered initial quantity.)
+// POST /api/products  (admin or store_manager)
+// Admins: creates the global product, plus a store_products row for the
+// Main Store and any storeIds selected via the "Add to which stores?"
+// multi-select. Selected sub-stores start at zero stock; only the Main
+// Store gets the entered initial quantity.
+// Store managers: creates the global product, plus a single store_products
+// row for their own store (req.storeId) at the entered initial quantity —
+// storeIds from the request body is ignored, they can never stock Main
+// Store or any other sub-store.
 const createProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
   const initialStock = Math.max(0, Number(req.body.quantity) || 0);
   const lowStockThreshold = Math.max(0, Number(req.body.lowStockThreshold) || 5);
-  const storeIds = Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
-
-  const { data: mainStore, error: mainStoreError } = await supabase
-    .from('stores')
-    .select('id')
-    .eq('is_main', true)
-    .maybeSingle();
-
-  assertNoSupabaseError(mainStoreError, 'Failed to resolve Main Store');
-  if (!mainStore) throw new ApiError(500, 'Main Store is not configured');
+  const isAdmin = req.user.role === 'admin';
 
   const { data: product, error } = await supabase.from('products').insert(payload).select('*').single();
   assertNoSupabaseError(error, 'Failed to create product');
 
-  const targetStoreIds = Array.from(new Set([mainStore.id, ...storeIds]));
-  const storeProductRows = targetStoreIds.map((storeId) => ({
-    store_id: storeId,
-    product_id: product.id,
-    stock: storeId === mainStore.id ? initialStock : 0,
-    low_stock_threshold: lowStockThreshold,
-  }));
+  let storeProductRows;
+  let stockLogStoreId;
+
+  if (isAdmin) {
+    const { data: mainStore, error: mainStoreError } = await supabase
+      .from('stores')
+      .select('id')
+      .eq('is_main', true)
+      .maybeSingle();
+
+    assertNoSupabaseError(mainStoreError, 'Failed to resolve Main Store');
+    if (!mainStore) throw new ApiError(500, 'Main Store is not configured');
+
+    const storeIds = Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
+    const targetStoreIds = Array.from(new Set([mainStore.id, ...storeIds]));
+    storeProductRows = targetStoreIds.map((storeId) => ({
+      store_id: storeId,
+      product_id: product.id,
+      stock: storeId === mainStore.id ? initialStock : 0,
+      low_stock_threshold: lowStockThreshold,
+    }));
+    stockLogStoreId = mainStore.id;
+  } else {
+    storeProductRows = [
+      {
+        store_id: req.storeId,
+        product_id: product.id,
+        stock: initialStock,
+        low_stock_threshold: lowStockThreshold,
+      },
+    ];
+    stockLogStoreId = req.storeId;
+  }
 
   const { error: spError } = await supabase.from('store_products').insert(storeProductRows);
   assertNoSupabaseError(spError, 'Failed to assign product to stores');
 
   if (initialStock > 0) {
     await supabase.from('inventory_logs').insert({
-      store_id: mainStore.id,
+      store_id: stockLogStoreId,
       product_id: product.id,
       change_type: 'in',
       quantity: initialStock,
@@ -171,9 +202,9 @@ const createProduct = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: product });
 });
 
-// PUT /api/products/:id  (admin only — edits global product fields; storeIds
-// here only ever ADDS new store assignments at zero stock, it never removes
-// an existing assignment)
+// PUT /api/products/:id  (admin or store_manager — edits global product
+// fields; storeIds here only ever ADDS new store assignments at zero stock
+// and is admin-only, it never removes an existing assignment)
 const updateProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
 
@@ -187,7 +218,7 @@ const updateProduct = asyncHandler(async (req, res) => {
   assertNoSupabaseError(error, 'Failed to update product');
   if (!data) throw new ApiError(404, 'Product not found');
 
-  const storeIds = Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
+  const storeIds = req.user.role === 'admin' && Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
   if (storeIds.length) {
     const { data: existingRows, error: existingError } = await supabase
       .from('store_products')

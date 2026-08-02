@@ -60,7 +60,7 @@ const emptyForm = {
 // Memoized row — with stable onEdit/onDeleteRequest callbacks from the
 // parent, unrelated row updates (e.g. editing a different product) skip
 // re-rendering every other row in the table.
-const ProductRow = memo(function ProductRow({ product, isAdmin, currency, onEdit, onDeleteRequest }) {
+const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProducts, currency, onEdit, onDeleteRequest }) {
   return (
     <TableRow>
       <TableCell>
@@ -88,15 +88,17 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, currency, onEdit
           {product.status}
         </Badge>
       </TableCell>
-      {isAdmin && (
+      {canManageProducts && (
         <TableCell className="text-right">
           <div className="flex justify-end gap-1">
             <Button variant="ghost" size="icon" onClick={() => onEdit(product)}>
               <Pencil className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => onDeleteRequest(product)}>
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
+            {isAdmin && (
+              <Button variant="ghost" size="icon" onClick={() => onDeleteRequest(product)}>
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            )}
           </div>
         </TableCell>
       )}
@@ -107,7 +109,8 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, currency, onEdit
 export default function Products() {
   const { settings } = useSettings();
   const currency = settings?.currency || 'PKR';
-  const { isAdmin } = useAuth();
+  const { isAdmin, isStoreManager } = useAuth();
+  const canManageProducts = isAdmin || isStoreManager;
   const { stores } = useStore();
   const subStores = stores.filter((s) => !s.is_main && s.is_active);
 
@@ -281,9 +284,9 @@ export default function Products() {
     <div className="space-y-6">
       <PageHeader
         title="Products"
-        description={isAdmin ? 'Manage your product catalog' : 'View products and stock for your store'}
+        description={canManageProducts ? 'Manage your product catalog' : 'View products and stock for your store'}
         actions={
-          isAdmin && (
+          canManageProducts && (
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" /> Add Product
             </Button>
@@ -331,9 +334,9 @@ export default function Products() {
             icon={Package}
             title="No products found"
             description={
-              isAdmin ? 'Try adjusting your filters, or add your first product.' : 'No products have been assigned to your store yet.'
+              canManageProducts ? 'Try adjusting your filters, or add your first product.' : 'No products have been assigned to your store yet.'
             }
-            action={isAdmin && <Button onClick={openCreate}><Plus className="h-4 w-4" /> Add Product</Button>}
+            action={canManageProducts && <Button onClick={openCreate}><Plus className="h-4 w-4" /> Add Product</Button>}
           />
         ) : (
           <>
@@ -346,7 +349,7 @@ export default function Products() {
                   <TableHead>Price</TableHead>
                   <TableHead>Stock</TableHead>
                   <TableHead>Status</TableHead>
-                  {isAdmin && <TableHead className="text-right">Actions</TableHead>}
+                  {canManageProducts && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -355,6 +358,7 @@ export default function Products() {
                     key={p.id}
                     product={p}
                     isAdmin={isAdmin}
+                    canManageProducts={canManageProducts}
                     currency={currency}
                     onEdit={openEdit}
                     onDeleteRequest={handleDeleteRequest}
@@ -367,7 +371,7 @@ export default function Products() {
         )}
       </Card>
 
-      {isAdmin && (
+      {canManageProducts && (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -446,16 +450,38 @@ export default function Products() {
                   </>
                 )}
 
-                {!editing && <p className="text-xs text-muted-foreground sm:col-span-2 -mt-2">Initial stock is added to the Main Store.</p>}
+                {!editing && (
+                  <p className="text-xs text-muted-foreground sm:col-span-2 -mt-2">
+                    {isAdmin ? 'Initial stock is added to the Main Store.' : 'Initial stock is added to your store.'}
+                  </p>
+                )}
 
                 <div className="space-y-1.5">
                   <Label>Purchase Price</Label>
                   <Input type="number" step="0.01" min="0" required value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Selling Price</Label>
-                  <Input type="number" step="0.01" min="0" required value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
-                </div>
+                {isTilesForm ? (
+                  <div className="space-y-1.5">
+                    <Label>Selling Price (per box)</Label>
+                    <Input
+                      readOnly
+                      disabled
+                      className="bg-secondary"
+                      value={
+                        form.sqrMeter && form.ratePerMeter
+                          ? (Number(form.sqrMeter) * Number(form.ratePerMeter)).toFixed(2)
+                          : ''
+                      }
+                      placeholder="SQR Meter × Rate per Meter"
+                    />
+                    <p className="text-xs text-muted-foreground">Computed automatically from SQR Meter per Box × Rate per Meter.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label>Selling Price</Label>
+                    <Input type="number" step="0.01" min="0" required value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label>Low Quantity Alert</Label>
                   <Input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setForm({ ...form, lowStockThreshold: e.target.value })} />

@@ -48,12 +48,14 @@ export function generateInvoicePdf(sale, settings) {
   autoTable(doc, {
     startY: y,
     head: [['Product', 'Qty', 'Unit Price', 'Total']],
-    body: sale.items.map((item) => [
-      item.product_name,
-      item.quantity,
-      formatCurrency(item.unit_price, currency),
-      formatCurrency(item.total, currency),
-    ]),
+    body: sale.items.map((item) => {
+      const totalMeters = item.sqr_meter ? Number((item.sqr_meter * item.quantity).toFixed(3)) : null;
+      const nameLine =
+        totalMeters != null && item.rate_per_meter != null
+          ? `${item.product_name}\n${totalMeters} m2 x ${formatCurrency(item.rate_per_meter, currency)}/m2`
+          : item.product_name;
+      return [nameLine, item.quantity, formatCurrency(item.unit_price, currency), formatCurrency(item.total, currency)];
+    }),
     theme: 'striped',
     headStyles: { fillColor: [37, 99, 235] },
     margin: { left: marginX, right: 40 },

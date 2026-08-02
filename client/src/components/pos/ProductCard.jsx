@@ -8,10 +8,9 @@ function ProductCardBase({ product, currency, onClick }) {
   const subtitle = isTiles
     ? [product.size, product.glaze_grade].filter(Boolean).join(' · ')
     : [product.company, product.article].filter(Boolean).join(' · ');
-  const computedRate =
-    isTiles && product.sqr_meter && product.rate_per_meter
-      ? Number(product.sqr_meter) * Number(product.rate_per_meter)
-      : null;
+  const rateLabel = isTiles && product.sqr_meter && product.rate_per_meter
+    ? `${product.sqr_meter} m² × rate/m²`
+    : null;
 
   return (
     <button
@@ -30,9 +29,7 @@ function ProductCardBase({ product, currency, onClick }) {
           <p className="text-sm font-semibold text-primary">{formatCurrency(product.selling_price, currency)}</p>
           <span className="text-xs text-muted-foreground">{outOfStock ? 'Out of stock' : `${product.quantity} ${product.unit} left`}</span>
         </div>
-        {computedRate != null && (
-          <p className="text-[10px] text-muted-foreground">≈ {formatCurrency(computedRate, currency)} (sqm × rate)</p>
-        )}
+        {rateLabel && <p className="text-[10px] text-muted-foreground">{rateLabel}</p>}
       </div>
     </button>
   );

@@ -113,14 +113,24 @@ export default function Invoice() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {sale.items.map((item) => (
-              <tr key={item.id}>
-                <td className="py-2.5">{item.product_name}</td>
-                <td className="py-2.5 text-center">{item.quantity}</td>
-                <td className="py-2.5 text-right">{formatCurrency(item.unit_price, currency)}</td>
-                <td className="py-2.5 text-right font-medium">{formatCurrency(item.total, currency)}</td>
-              </tr>
-            ))}
+            {sale.items.map((item) => {
+              const totalMeters = item.sqr_meter ? Number((item.sqr_meter * item.quantity).toFixed(3)) : null;
+              return (
+                <tr key={item.id}>
+                  <td className="py-2.5">
+                    {item.product_name}
+                    {totalMeters != null && item.rate_per_meter != null && (
+                      <p className="text-xs text-muted-foreground">
+                        {totalMeters} m² &times; {formatCurrency(item.rate_per_meter, currency)}/m²
+                      </p>
+                    )}
+                  </td>
+                  <td className="py-2.5 text-center">{item.quantity}</td>
+                  <td className="py-2.5 text-right">{formatCurrency(item.unit_price, currency)}</td>
+                  <td className="py-2.5 text-right font-medium">{formatCurrency(item.total, currency)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
