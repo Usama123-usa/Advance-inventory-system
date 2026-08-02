@@ -99,12 +99,6 @@ const buildProductPayload = (body) => {
 
   const sqrMeter = isTiles ? numOrNull(body.sqrMeter) : null;
   const ratePerMeter = isTiles ? numOrNull(body.ratePerMeter) : null;
-  // Tiles are priced by rate-per-square-meter, not a manually typed flat
-  // price: selling_price is always derived as sqm-per-box × rate-per-meter
-  // so every screen that reads selling_price (POS cart, product list,
-  // dashboards) — and the sale total computed in create_sale() — line up
-  // with the meter rate the box was configured with.
-  const tileSellingPrice = sqrMeter != null && ratePerMeter != null ? Number((sqrMeter * ratePerMeter).toFixed(2)) : null;
 
   return {
     name: body.name.trim(),
@@ -112,7 +106,11 @@ const buildProductPayload = (body) => {
     sku: body.sku?.trim() || null,
     category_id: body.categoryId || null,
     purchase_price: Number(body.purchasePrice) || 0,
-    selling_price: isTiles ? tileSellingPrice ?? (Number(body.sellingPrice) || 0) : Number(body.sellingPrice) || 0,
+    // selling_price is a manually-entered reference price (shown on the
+    // product list / POS cart). It is NOT what a Tiles sale actually
+    // charges — create_sale() prices Tiles line items from sqr_meter x
+    // rate_per_meter directly, so it stays correct even if this drifts.
+    selling_price: Number(body.sellingPrice) || 0,
     // Tiles/Other forms don't expose a raw "unit" input — derive a sensible
     // one so existing "{quantity} {unit}" displays (Products table, POS
     // cart) keep working. Legacy callers can still pass body.unit directly.
@@ -204,7 +202,9 @@ const createProduct = asyncHandler(async (req, res) => {
 
 // PUT /api/products/:id  (admin or store_manager — edits global product
 // fields; storeIds here only ever ADDS new store assignments at zero stock
-// and is admin-only, it never removes an existing assignment)
+// and is admin-only, it never removes an existing assignment. quantity, if
+// provided, sets stock for the caller's current store — req.storeId — via
+// the same atomic adjust_stock() RPC the Inventory page uses.)
 const updateProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
 
@@ -217,6 +217,31 @@ const updateProduct = asyncHandler(async (req, res) => {
 
   assertNoSupabaseError(error, 'Failed to update product');
   if (!data) throw new ApiError(404, 'Product not found');
+
+  if (req.body.quantity !== undefined && req.body.quantity !== '') {
+    const desiredStock = Math.max(0, Number(req.body.quantity) || 0);
+
+    const { data: sp, error: spLookupError } = await supabase
+      .from('store_products')
+      .select('stock')
+      .eq('store_id', req.storeId)
+      .eq('product_id', req.params.id)
+      .maybeSingle();
+
+    assertNoSupabaseError(spLookupError, 'Failed to look up current stock');
+
+    if (sp && desiredStock !== sp.stock) {
+      const { error: adjustError } = await supabase.rpc('adjust_stock', {
+        p_store_id: req.storeId,
+        p_product_id: req.params.id,
+        p_delta: desiredStock - sp.stock,
+        p_change_type: 'adjustment',
+        p_reason: 'Updated from product edit form',
+        p_user_id: req.user.id,
+      });
+      assertNoSupabaseError(adjustError, 'Failed to update stock');
+    }
+  }
 
   const storeIds = req.user.role === 'admin' && Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
   if (storeIds.length) {

@@ -415,8 +415,8 @@ export default function Products() {
                       />
                     ))}
                     <div className="space-y-1.5">
-                      <Label>Quantity (boxes) {editing && <span className="text-xs text-muted-foreground">(use Inventory to adjust)</span>}</Label>
-                      <Input type="number" min="0" required disabled={!!editing} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                      <Label>Quantity (boxes) {editing && <span className="text-xs text-muted-foreground">(updates stock for your current store)</span>}</Label>
+                      <Input type="number" min="0" required value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
                     </div>
                   </>
                 ) : (
@@ -444,8 +444,8 @@ export default function Products() {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Quantity {editing && <span className="text-xs text-muted-foreground">(use Inventory to adjust)</span>}</Label>
-                      <Input type="number" min="0" required disabled={!!editing} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+                      <Label>Quantity {editing && <span className="text-xs text-muted-foreground">(updates stock for your current store)</span>}</Label>
+                      <Input type="number" min="0" required value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
                     </div>
                   </>
                 )}
@@ -460,28 +460,15 @@ export default function Products() {
                   <Label>Purchase Price</Label>
                   <Input type="number" step="0.01" min="0" required value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
                 </div>
-                {isTilesForm ? (
-                  <div className="space-y-1.5">
-                    <Label>Selling Price (per box)</Label>
-                    <Input
-                      readOnly
-                      disabled
-                      className="bg-secondary"
-                      value={
-                        form.sqrMeter && form.ratePerMeter
-                          ? (Number(form.sqrMeter) * Number(form.ratePerMeter)).toFixed(2)
-                          : ''
-                      }
-                      placeholder="SQR Meter × Rate per Meter"
-                    />
-                    <p className="text-xs text-muted-foreground">Computed automatically from SQR Meter per Box × Rate per Meter.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <Label>Selling Price</Label>
-                    <Input type="number" step="0.01" min="0" required value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <Label>Selling Price{isTilesForm ? ' (per box)' : ''}</Label>
+                  <Input type="number" step="0.01" min="0" required value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
+                  {isTilesForm && form.sqrMeter && form.ratePerMeter && (
+                    <p className="text-xs text-muted-foreground">
+                      Suggested: {(Number(form.sqrMeter) * Number(form.ratePerMeter)).toFixed(2)} (SQR Meter × Rate per Meter) — the invoice always bills tiles at this rate regardless of what you enter here.
+                    </p>
+                  )}
+                </div>
                 <div className="space-y-1.5">
                   <Label>Low Quantity Alert</Label>
                   <Input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setForm({ ...form, lowStockThreshold: e.target.value })} />
