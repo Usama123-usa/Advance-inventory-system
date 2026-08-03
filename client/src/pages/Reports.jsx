@@ -153,25 +153,25 @@ export default function Reports() {
 
       {meta && tab === 'profit' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Revenue</p><p className="text-xl font-bold">{formatCurrency(meta.revenue, currency)}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Cost</p><p className="text-xl font-bold">{formatCurrency(meta.cost, currency)}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className="text-xl font-bold text-success">{formatCurrency(meta.profit, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Revenue</p><p className="font-display text-xl font-bold">{formatCurrency(meta.revenue, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Cost</p><p className="font-display text-xl font-bold">{formatCurrency(meta.cost, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className="font-display text-xl font-bold text-success">{formatCurrency(meta.profit, currency)}</p></Card>
         </div>
       )}
 
       {meta && tab === 'stock' && (
         <Card className="p-4">
           <p className="text-sm text-muted-foreground">Total Stock Value</p>
-          <p className="text-xl font-bold">{formatCurrency(meta.totalStockValue, currency)}</p>
+          <p className="font-display text-xl font-bold">{formatCurrency(meta.totalStockValue, currency)}</p>
         </Card>
       )}
 
       {meta && tab === 'all-stores' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Sales</p><p className="text-xl font-bold">{formatCurrency(meta.totalSales, currency)}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Orders</p><p className="text-xl font-bold">{meta.totalOrders}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Expenses</p><p className="text-xl font-bold">{formatCurrency(meta.totalExpenses, currency)}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className="text-xl font-bold text-success">{formatCurrency(meta.netProfit, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Sales</p><p className="font-display text-xl font-bold">{formatCurrency(meta.totalSales, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Orders</p><p className="font-display text-xl font-bold">{meta.totalOrders}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Expenses</p><p className="font-display text-xl font-bold">{formatCurrency(meta.totalExpenses, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className="font-display text-xl font-bold text-success">{formatCurrency(meta.netProfit, currency)}</p></Card>
         </div>
       )}
 

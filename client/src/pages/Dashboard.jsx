@@ -22,39 +22,88 @@ import api from '@/lib/api';
 import { useSettings } from '@/context/SettingsContext';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 
+const compactNumber = (value) =>
+  new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
+
+// Custom tooltip: value leads (bold, high-contrast), date follows (muted) —
+// matches the app's card chrome instead of recharts' generic default box.
+function SalesTrendTooltip({ active, payload, label, currency }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
+      <p className="text-xs text-muted-foreground">
+        {new Date(label).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+      </p>
+      <p className="mt-0.5 text-sm font-semibold text-foreground">{formatCurrency(payload[0].value, currency)}</p>
+    </div>
+  );
+}
+
+// Marks only the last point so the series ends on a visible anchor instead of
+// trailing off into the fill; every other index renders nothing.
+function makeEndDot(lastIndex) {
+  return function EndDot({ cx, cy, index }) {
+    if (index !== lastIndex) return null;
+    return <circle key="end-dot" cx={cx} cy={cy} r={5} fill="hsl(var(--primary))" stroke="hsl(var(--card))" strokeWidth={2} />;
+  };
+}
+
 // Each panel only re-renders when its own slice of dashboard data changes,
 // not on every Dashboard render.
 const SalesTrendChart = memo(function SalesTrendChart({ trend, currency }) {
+  if (trend.length === 0) {
+    return <EmptyState title="No sales yet" description="Daily sales will chart here once orders come in." />;
+  }
+
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <AreaChart data={trend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+      <AreaChart data={trend} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
-            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.28} />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+        <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
         <XAxis
           dataKey="date"
           tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-          fontSize={12}
+          fontSize={11}
           tickLine={false}
           axisLine={false}
+          tickMargin={10}
+          minTickGap={24}
+          stroke="hsl(var(--muted-foreground))"
         />
-        <YAxis fontSize={12} tickLine={false} axisLine={false} width={40} />
+        <YAxis
+          fontSize={11}
+          tickLine={false}
+          axisLine={false}
+          width={40}
+          tickMargin={8}
+          tickFormatter={compactNumber}
+          stroke="hsl(var(--muted-foreground))"
+        />
         <Tooltip
-          formatter={(value) => formatCurrency(value, currency)}
-          labelFormatter={(v) => new Date(v).toLocaleDateString()}
-          contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 13 }}
+          content={<SalesTrendTooltip currency={currency} />}
+          cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }}
         />
-        <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fill="url(#colorTotal)" strokeWidth={2} />
+        <Area
+          type="monotone"
+          dataKey="total"
+          stroke="hsl(var(--primary))"
+          strokeWidth={2}
+          strokeLinecap="round"
+          fill="url(#colorTotal)"
+          dot={makeEndDot(trend.length - 1)}
+          activeDot={{ r: 5, fill: 'hsl(var(--primary))', stroke: 'hsl(var(--card))', strokeWidth: 2 }}
+        />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -199,8 +248,17 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Sales Trend (Last 14 Days)</CardTitle>
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
+              <CardTitle>Sales Trend</CardTitle>
+              <CardDescription>Last 14 days</CardDescription>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-sm font-semibold text-foreground">
+                {formatCurrency(trend.reduce((sum, t) => sum + Number(t.total || 0), 0), currency)}
+              </p>
+            </div>
           </CardHeader>
           <CardContent className="pl-0">
             <SalesTrendChart trend={trend} currency={currency} />

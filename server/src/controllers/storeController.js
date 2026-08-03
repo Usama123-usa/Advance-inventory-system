@@ -3,6 +3,7 @@ const { supabase } = require('../config/supabase');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
+const cache = require('../utils/cache');
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
 
@@ -79,6 +80,8 @@ const updateStore = asyncHandler(async (req, res) => {
     .single();
 
   assertNoSupabaseError(error, 'Failed to update store');
+  cache.del(`store:${req.params.id}`);
+  cache.del('store:main');
   res.json({ success: true, data });
 });
 
@@ -98,6 +101,7 @@ const deleteStore = asyncHandler(async (req, res) => {
 
   const { error } = await supabase.from('stores').update({ is_active: false }).eq('id', req.params.id);
   assertNoSupabaseError(error, 'Failed to archive store');
+  cache.del(`store:${req.params.id}`);
 
   res.json({ success: true, message: 'Store archived successfully' });
 });

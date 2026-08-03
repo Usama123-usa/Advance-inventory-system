@@ -41,7 +41,7 @@ export default function Login() {
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg">
             <Store className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold">InventoryPro</h1>
+          <h1 className="font-display text-2xl font-extrabold">InventoryPro</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to manage your store</p>
         </div>
 

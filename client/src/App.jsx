@@ -16,6 +16,7 @@ const Products = lazy(() => import('@/pages/Products'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const POS = lazy(() => import('@/pages/POS'));
+const Sales = lazy(() => import('@/pages/Sales'));
 const Invoice = lazy(() => import('@/pages/Invoice'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Settings = lazy(() => import('@/pages/Settings'));
@@ -59,6 +60,7 @@ export default function App() {
                   >
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/pos" element={<POS />} />
+                    <Route path="/sales" element={<Sales />} />
                     <Route path="/categories" element={<Categories />} />
                     <Route path="/products" element={<Products />} />
                     <Route path="/inventory" element={<Inventory />} />

@@ -2,8 +2,15 @@ const { verifyToken } = require('../utils/jwt');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 const { supabase } = require('../config/supabase');
+const cache = require('../utils/cache');
+
+const USER_CACHE_TTL_MS = 30_000;
+const STORE_CACHE_TTL_MS = 60_000;
 
 // Verifies the JWT and attaches the authenticated user to req.user.
+// The user row is cached briefly (see cache.js) so requests fired in quick
+// succession (every page load hits this) don't each pay for a DB round trip
+// just to re-confirm the same account is still active.
 const authenticate = asyncHandler(async (req, res, next) => {
   const header = req.headers.authorization || '';
   const [scheme, token] = header.split(' ');
@@ -19,13 +26,21 @@ const authenticate = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, 'Invalid or expired token');
   }
 
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('id, name, email, role, is_active, store_id')
-    .eq('id', decoded.sub)
-    .maybeSingle();
+  const cacheKey = `user:${decoded.sub}`;
+  let user = cache.get(cacheKey);
 
-  if (error) throw new ApiError(500, 'Failed to verify user session');
+  if (!user) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, role, is_active, store_id')
+      .eq('id', decoded.sub)
+      .maybeSingle();
+
+    if (error) throw new ApiError(500, 'Failed to verify user session');
+    user = data;
+    if (user) cache.set(cacheKey, user, USER_CACHE_TTL_MS);
+  }
+
   if (!user || !user.is_active) {
     throw new ApiError(401, 'Account not found or deactivated');
   }
@@ -59,27 +74,42 @@ const resolveStore = asyncHandler(async (req, res, next) => {
   const requestedStoreId = req.query.storeId;
 
   if (requestedStoreId) {
-    const { data: store, error } = await supabase
-      .from('stores')
-      .select('id')
-      .eq('id', requestedStoreId)
-      .eq('is_active', true)
-      .maybeSingle();
+    const cacheKey = `store:${requestedStoreId}`;
+    let store = cache.get(cacheKey);
 
-    if (error) throw new ApiError(500, 'Failed to verify store');
+    if (!store) {
+      const { data, error } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('id', requestedStoreId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw new ApiError(500, 'Failed to verify store');
+      store = data;
+      if (store) cache.set(cacheKey, store, STORE_CACHE_TTL_MS);
+    }
+
     if (!store) throw new ApiError(404, 'Store not found');
 
     req.storeId = store.id;
     return next();
   }
 
-  const { data: mainStore, error: mainError } = await supabase
-    .from('stores')
-    .select('id')
-    .eq('is_main', true)
-    .maybeSingle();
+  let mainStore = cache.get('store:main');
 
-  if (mainError) throw new ApiError(500, 'Failed to resolve Main Store');
+  if (!mainStore) {
+    const { data, error } = await supabase
+      .from('stores')
+      .select('id')
+      .eq('is_main', true)
+      .maybeSingle();
+
+    if (error) throw new ApiError(500, 'Failed to resolve Main Store');
+    mainStore = data;
+    if (mainStore) cache.set('store:main', mainStore, STORE_CACHE_TTL_MS);
+  }
+
   if (!mainStore) throw new ApiError(500, 'Main Store is not configured');
 
   req.storeId = mainStore.id;

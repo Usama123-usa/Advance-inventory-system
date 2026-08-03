@@ -3,7 +3,10 @@ import { cn } from '@/lib/utils';
 export function Card({ className, ...props }) {
   return (
     <div
-      className={cn('rounded-xl border border-border bg-card text-card-foreground card-shadow', className)}
+      className={cn(
+        'rounded-2xl border border-border bg-gradient-to-br from-[hsl(var(--card-gradient-from))] to-[hsl(var(--card-gradient-to))] text-card-foreground card-shadow',
+        className
+      )}
       {...props}
     />
   );
@@ -14,7 +17,9 @@ export function CardHeader({ className, ...props }) {
 }
 
 export function CardTitle({ className, ...props }) {
-  return <h3 className={cn('text-base font-semibold leading-none tracking-tight', className)} {...props} />;
+  return (
+    <h3 className={cn('font-display text-lg font-bold leading-none tracking-tight', className)} {...props} />
+  );
 }
 
 export function CardDescription({ className, ...props }) {

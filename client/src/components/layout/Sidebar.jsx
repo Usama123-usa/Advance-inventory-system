@@ -6,6 +6,7 @@ import {
   Boxes,
   Users,
   ShoppingCart,
+  Receipt,
   BarChart3,
   Settings,
   Store,
@@ -20,6 +21,7 @@ import { useAuth } from '@/context/AuthContext';
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/pos', label: 'Point of Sale', icon: ShoppingCart, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/sales', label: 'Sales', icon: Receipt, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/products', label: 'Products', icon: Package, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/categories', label: 'Categories', icon: Tags, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/inventory', label: 'Inventory', icon: Boxes, roles: ['admin', 'staff', 'store_manager'] },
@@ -42,13 +44,13 @@ export function Sidebar({ open, onClose }) {
       )}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-card transition-transform print:hidden lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar transition-transform print:hidden lg:sticky lg:inset-y-auto lg:top-0 lg:h-screen lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-16 items-center justify-between gap-2 border-b border-border px-5">
-          <div className="flex items-center gap-2 font-bold text-lg">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-primary-foreground">
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border px-5">
+          <div className="flex items-center gap-2 font-display text-lg font-bold">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30">
               <Store className="h-[18px] w-[18px]" />
             </div>
             <span>InventoryPro</span>
@@ -58,7 +60,7 @@ export function Sidebar({ open, onClose }) {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
           {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -66,9 +68,9 @@ export function Sidebar({ open, onClose }) {
               onClick={onClose}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    ? 'bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/25'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                 )
               }
@@ -79,7 +81,7 @@ export function Sidebar({ open, onClose }) {
           ))}
         </nav>
 
-        <div className="border-t border-border p-4 text-xs text-muted-foreground">
+        <div className="shrink-0 border-t border-border p-4 text-xs text-muted-foreground">
           Premium Inventory & POS &copy; {new Date().getFullYear()}
         </div>
       </aside>

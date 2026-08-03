@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const saleController = require('../controllers/saleController');
 const validate = require('../middleware/validate');
-const { authenticate, resolveStore } = require('../middleware/auth');
+const { authenticate, requireRole, resolveStore } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -11,7 +11,28 @@ router.use(resolveStore);
 
 router.get('/', saleController.getSales);
 router.get('/pending-payments', saleController.getPendingPayments);
+
+router.put(
+  '/pending-payments/:id',
+  [
+    body('customerName').optional({ nullable: true }).isString().trim(),
+    body('customerPhone').optional({ nullable: true }).isString().trim(),
+    body('customerCnic').optional({ nullable: true }).isString().trim(),
+    body('totalRemainingBalance').optional({ nullable: true }).isFloat({ min: 0 }),
+  ],
+  validate,
+  saleController.updatePendingPayment
+);
+
+router.post(
+  '/pending-payments/:id/payment',
+  [body('amount').isFloat({ gt: 0 }).withMessage('Payment amount must be greater than zero')],
+  validate,
+  saleController.receivePendingPayment
+);
+
 router.get('/:id', saleController.getSaleById);
+router.delete('/:id', requireRole('admin'), saleController.deleteSale);
 
 router.post(
   '/',

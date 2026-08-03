@@ -10,6 +10,10 @@ const RPC_ERROR_MAP = {
   P0002: () => new ApiError(404, 'Product not found'),
   P0003: () => new ApiError(400, 'At least one item is required to complete a sale'),
   P0004: () => new ApiError(400, 'Each item must have a positive quantity'),
+  P0005: () => new ApiError(404, 'Pending payment record not found'),
+  P0006: () => new ApiError(400, 'Payment amount must be greater than zero'),
+  P0007: () => new ApiError(400, 'Payment amount cannot exceed the outstanding balance'),
+  P0008: () => new ApiError(404, 'Sale not found'),
 };
 
 // Throws a mapped ApiError if `error` (from a supabase-js call) is set.

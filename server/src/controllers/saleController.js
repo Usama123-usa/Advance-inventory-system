@@ -99,6 +99,64 @@ const getPendingPayments = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+// PUT /api/sales/pending-payments/:id
+// body: { customerName, customerPhone, customerCnic, totalRemainingBalance }
+// Edits a customer_balances row directly — contact details and/or a manual
+// correction to the outstanding amount.
+const updatePendingPayment = asyncHandler(async (req, res) => {
+  const { customerName, customerPhone, customerCnic, totalRemainingBalance } = req.body;
+
+  const updates = {};
+  if (customerName !== undefined) updates.customer_name = customerName.trim() || 'Unknown';
+  if (customerPhone !== undefined) updates.customer_phone = customerPhone.trim() || null;
+  if (customerCnic !== undefined) updates.customer_cnic = customerCnic.trim() || null;
+  if (totalRemainingBalance !== undefined) updates.total_remaining_balance = Number(totalRemainingBalance);
+
+  const { data, error } = await supabase
+    .from('customer_balances')
+    .update(updates)
+    .eq('id', req.params.id)
+    .eq('store_id', req.storeId)
+    .select('id, customer_name, customer_phone, customer_cnic, total_remaining_balance, updated_at')
+    .maybeSingle();
+
+  assertNoSupabaseError(error, 'Failed to update pending payment');
+  if (!data) throw new ApiError(404, 'Pending payment record not found');
+
+  res.json({ success: true, data });
+});
+
+// POST /api/sales/pending-payments/:id/payment
+// body: { amount }
+// Records a payment against the outstanding balance via record_customer_payment().
+const receivePendingPayment = asyncHandler(async (req, res) => {
+  const { amount } = req.body;
+
+  const { data, error } = await supabase.rpc('record_customer_payment', {
+    p_store_id: req.storeId,
+    p_balance_id: req.params.id,
+    p_amount: Number(amount),
+  });
+
+  assertNoSupabaseError(error, 'Failed to record payment');
+  res.json({ success: true, data });
+});
+
+// DELETE /api/sales/:id  (admin only)
+// Reverses the sale via delete_sale(): restores stock, reverses any
+// outstanding balance it contributed, then removes the sale (and its
+// sale_items, via cascade). Irreversible — there is no undo for this.
+const deleteSale = asyncHandler(async (req, res) => {
+  const { error } = await supabase.rpc('delete_sale', {
+    p_store_id: req.storeId,
+    p_sale_id: req.params.id,
+    p_deleted_by: req.user.id,
+  });
+
+  assertNoSupabaseError(error, 'Failed to delete sale');
+  res.json({ success: true, message: 'Sale deleted successfully' });
+});
+
 // POST /api/sales
 // body: { customerId, items: [{ productId, quantity }], discount, paymentMethod,
 //         notes, paidAmount, customerName, customerPhone, customerAddress, customerCnic }
@@ -143,4 +201,12 @@ const createSale = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: sale });
 });
 
-module.exports = { getSales, getSaleById, getPendingPayments, createSale };
+module.exports = {
+  getSales,
+  getSaleById,
+  getPendingPayments,
+  updatePendingPayment,
+  receivePendingPayment,
+  createSale,
+  deleteSale,
+};
