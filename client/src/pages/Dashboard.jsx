@@ -35,6 +35,15 @@ import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
 const compactNumber = (value) =>
   new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
 
+// Matches the "today" boundary the get_store_dashboard RPC uses
+// (date_trunc('day', now()) — the Postgres session's day, i.e. UTC on a
+// default Supabase project) so the Sales page's date filter lines up
+// exactly with the dashboard's own Today's Sales total/count.
+const startOfTodayIso = () => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+};
+
 // Custom tooltip: value leads (bold, high-contrast), date follows (muted) —
 // matches the app's card chrome instead of recharts' generic default box.
 function SalesTrendTooltip({ active, payload, label, currency }) {
@@ -255,7 +264,7 @@ export default function Dashboard() {
           value={formatCurrency(summary.todaySales.total, currency)}
           trendLabel={`${summary.todaySales.count} orders today`}
           icon={CalendarDays}
-          to="/sales"
+          to={`/sales?from=${encodeURIComponent(startOfTodayIso())}`}
           iconClassName="bg-success/10 text-success"
         />
         <StatCard

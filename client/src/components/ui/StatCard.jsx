@@ -2,6 +2,18 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Card } from './Card';
 
+// Longer values (e.g. "PKR 4,418,112.80") need a smaller font to stay on one
+// line instead of wrapping mid-number — sized by character count since the
+// value can be a currency string, a plain count, or anything formatted by
+// the caller.
+function valueFontSizeClass(value) {
+  const length = String(value ?? '').length;
+  if (length > 18) return 'text-lg';
+  if (length > 14) return 'text-xl';
+  if (length > 10) return 'text-2xl';
+  return 'text-[28px]';
+}
+
 export function StatCard({ label, value, icon: Icon, trend, trendLabel, iconClassName, className, to }) {
   const Wrapper = to ? Link : 'div';
   const wrapperProps = to ? { to } : {};
@@ -12,7 +24,15 @@ export function StatCard({ label, value, icon: Icon, trend, trendLabel, iconClas
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="font-display mt-2 break-words text-[28px] font-extrabold leading-tight tracking-tight">{value}</p>
+          <p
+            className={cn(
+              'font-display mt-2 truncate font-extrabold leading-tight tracking-tight',
+              valueFontSizeClass(value)
+            )}
+            title={String(value ?? '')}
+          >
+            {value}
+          </p>
           {trendLabel && (
             <p
               className={cn(

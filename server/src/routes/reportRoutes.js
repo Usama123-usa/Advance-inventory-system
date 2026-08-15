@@ -13,6 +13,7 @@ router.get('/all-stores', requireRole('admin'), reportController.getAllStoresRep
 router.use(resolveStore);
 
 router.get('/sales', reportController.getSalesReport);
+router.get('/sales-detail', reportController.getSalesDetailReport);
 router.get('/top-products', reportController.getTopProducts);
 router.get('/stock', reportController.getStockReport);
 router.get('/profit', reportController.getProfitReport);
