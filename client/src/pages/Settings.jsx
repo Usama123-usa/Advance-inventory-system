@@ -112,7 +112,7 @@ export default function Settings() {
               </div>
 
               {isAdmin && (
-                <Button type="submit" loading={saving}><Save className="h-4 w-4" /> Save Store Info</Button>
+                <Button type="submit" variant="success" loading={saving}><Save className="h-4 w-4" /> Save Store Info</Button>
               )}
             </form>
           </CardContent>
@@ -137,7 +137,7 @@ export default function Settings() {
                 <Textarea disabled={!isAdmin} value={form.invoiceFooter} onChange={(e) => setForm({ ...form, invoiceFooter: e.target.value })} />
               </div>
               {isAdmin && (
-                <Button type="submit" loading={saving}><Save className="h-4 w-4" /> Save System Settings</Button>
+                <Button type="submit" variant="success" loading={saving}><Save className="h-4 w-4" /> Save System Settings</Button>
               )}
             </form>
 

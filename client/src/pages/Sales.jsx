@@ -20,9 +20,9 @@ import { formatCurrency, formatDateTime } from '@/lib/utils';
 
 const STATUS_VARIANT = {
   paid: 'success',
-  partial: 'warning',
+  partial: 'orange',
   unpaid: 'destructive',
-  pending: 'warning',
+  pending: 'orange',
   refunded: 'secondary',
 };
 
@@ -127,7 +127,7 @@ export default function Sales() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => navigate(`/invoice/${sale.id}`)} title="View invoice">
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4 text-purple" />
                         </Button>
                         {isAdmin && (
                           <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(sale)} title="Delete sale">

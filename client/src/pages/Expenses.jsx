@@ -146,8 +146,8 @@ export default function Expenses() {
 
       {summary && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatCard label="Today's Expenses" value={formatCurrency(summary.todayTotal, currency)} icon={Wallet} />
-          <StatCard label="This Month's Expenses" value={formatCurrency(summary.monthlyTotal, currency)} icon={Wallet} />
+          <StatCard label="Today's Expenses" value={formatCurrency(summary.todayTotal, currency)} icon={Wallet} iconClassName="bg-rose/10 text-rose" />
+          <StatCard label="This Month's Expenses" value={formatCurrency(summary.monthlyTotal, currency)} icon={Wallet} iconClassName="bg-rose/10 text-rose" />
         </div>
       )}
 
@@ -195,11 +195,11 @@ export default function Expenses() {
                     <TableCell><Badge variant="secondary" className="capitalize">{categoryLabel(exp.category)}</Badge></TableCell>
                     <TableCell className="max-w-xs truncate">{exp.description || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{exp.created_by_name || '—'}</TableCell>
-                    <TableCell className="font-medium">{formatCurrency(exp.amount, currency)}</TableCell>
+                    <TableCell className="font-medium text-rose">{formatCurrency(exp.amount, currency)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(exp)}>
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-4 w-4 text-primary" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(exp)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -246,7 +246,7 @@ export default function Expenses() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" loading={saving}>{editing ? 'Save Changes' : 'Add Expense'}</Button>
+              <Button type="submit" variant="success" loading={saving}>{editing ? 'Save Changes' : 'Add Expense'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

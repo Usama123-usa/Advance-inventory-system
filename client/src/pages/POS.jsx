@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ScanBarcode, ShoppingCart, Trash2, Banknote, CreditCard, Landmark } from 'lucide-react';
+import { Search, ScanBarcode, ShoppingCart, Trash2, Banknote, CreditCard, Landmark, Hash } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -39,6 +39,7 @@ export default function POS() {
   const barcodeRef = useRef(null);
 
   const [cart, setCart] = useState([]);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState('walk-in');
   const [discount, setDiscount] = useState('0');
@@ -51,7 +52,6 @@ export default function POS() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
-  const [customerCnic, setCustomerCnic] = useState('');
 
   const taxRate = Number(settings?.tax_rate || 0);
 
@@ -85,7 +85,9 @@ export default function POS() {
         }
         return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
       }
-      return [...prev, { ...product, qty: 1 }];
+      // Price is never pulled from the product catalog — the cashier types
+      // it in for every cart line, and that typed price is what gets billed.
+      return [...prev, { ...product, qty: 1, price: '' }];
     });
   }, []);
 
@@ -120,11 +122,17 @@ export default function POS() {
   const increaseQty = useCallback((productId) => updateQty(productId, 1), [updateQty]);
   const decreaseQty = useCallback((productId) => updateQty(productId, -1), [updateQty]);
 
+  const updatePrice = useCallback((productId, value) => {
+    setCart((prev) => prev.map((i) => (i.id === productId ? { ...i, price: value } : i)));
+  }, []);
+
   const removeFromCart = useCallback((productId) => setCart((prev) => prev.filter((i) => i.id !== productId)), []);
 
   const { subtotal, discountAmount, taxAmount, grandTotal } = useMemo(() => {
-    const sub = cart.reduce((sum, i) => sum + i.selling_price * i.qty, 0);
-    const discountAmt = Number(discount) || 0;
+    const sub = cart.reduce((sum, i) => sum + (Number(i.price) || 0) * i.qty, 0);
+    // A negative discount must never raise the total, so it's clamped here
+    // in addition to being stripped from the input as the user types.
+    const discountAmt = Math.max(Number(discount) || 0, 0);
     const taxable = Math.max(sub - discountAmt, 0);
     const tax = Number(((taxable * taxRate) / 100).toFixed(2));
     const grand = Number((taxable + tax).toFixed(2));
@@ -150,13 +158,13 @@ export default function POS() {
 
   const resetCheckoutFields = () => {
     setCart([]);
+    setInvoiceNumber('');
     setDiscount('0');
     setAmountPaid('');
     setCustomerId('walk-in');
     setCustomerName('');
     setCustomerPhone('');
     setCustomerAddress('');
-    setCustomerCnic('');
   };
 
   const handleCompleteSale = async () => {
@@ -164,18 +172,30 @@ export default function POS() {
       toast.error('Add at least one product to the cart');
       return;
     }
+    if (!invoiceNumber.trim()) {
+      toast.error('Enter an invoice number before completing the sale');
+      return;
+    }
+    if (cart.some((i) => i.price === '' || i.price == null || Number(i.price) < 0)) {
+      toast.error('Enter a selling price for every item in the cart');
+      return;
+    }
+    if (remainingBalance > 0 && (!customerName.trim() || !customerPhone.trim())) {
+      toast.error('Customer name and phone are required for a partial or unpaid sale, so this debt can be traced back to them');
+      return;
+    }
     setCompleting(true);
     try {
       const { data } = await api.post('/sales', {
+        invoiceNumber: invoiceNumber.trim(),
         customerId: customerId === 'walk-in' ? null : customerId,
-        items: cart.map((i) => ({ productId: i.id, quantity: i.qty })),
+        items: cart.map((i) => ({ productId: i.id, quantity: i.qty, unitPrice: Number(i.price) })),
         discount: discountAmount,
         paymentMethod,
         paidAmount: amountPaid === '' ? undefined : Number(amountPaid),
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         customerAddress: customerAddress.trim() || undefined,
-        customerCnic: customerCnic.trim() || undefined,
       });
       toast.success('Sale completed successfully');
       resetCheckoutFields();
@@ -188,9 +208,9 @@ export default function POS() {
   };
 
   return (
-    <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="grid h-full grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Left: search + product grid */}
-      <div className="space-y-4 lg:col-span-2">
+      <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -210,14 +230,14 @@ export default function POS() {
 
         <Card className="p-4">
           {loadingProducts ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-44" />)}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56" />)}
             </div>
           ) : products.length === 0 ? (
             <EmptyState title="No products found" description="Try a different search term." />
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {products.map((p) => (
                   <ProductCard key={p.id} product={p} currency={currency} onClick={addToCart} />
                 ))}
@@ -230,9 +250,9 @@ export default function POS() {
 
       {/* Right: cart */}
       <Card className="flex h-fit flex-col lg:sticky lg:top-20">
-        <div className="flex items-center justify-between border-b border-border p-4">
-          <h2 className="flex items-center gap-2 font-semibold">
-            <ShoppingCart className="h-4 w-4" /> Cart ({cart.length})
+        <div className="flex items-center justify-between border-b border-border p-5">
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <ShoppingCart className="h-5 w-5" /> Cart ({cart.length})
           </h2>
           {cart.length > 0 && (
             <button onClick={() => setCart([])} className="text-xs text-muted-foreground hover:text-destructive">
@@ -241,9 +261,25 @@ export default function POS() {
           )}
         </div>
 
-        <div className="max-h-80 flex-1 divide-y divide-border overflow-y-auto px-4">
+        {cart.length > 0 && (
+          <div className="border-b border-border p-5 pb-0">
+            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Hash className="h-3.5 w-3.5" /> Invoice Number <span className="text-destructive">*</span>
+            </label>
+            <Input
+              placeholder="Enter your invoice number"
+              maxLength={40}
+              required
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              className="mb-5 font-semibold"
+            />
+          </div>
+        )}
+
+        <div className="max-h-[46rem] min-h-[14rem] flex-1 divide-y divide-border overflow-y-auto px-5">
           {cart.length === 0 ? (
-            <EmptyState icon={ShoppingCart} title="Cart is empty" description="Click a product to add it here." className="py-10" />
+            <EmptyState icon={ShoppingCart} title="Cart is empty" description="Click a product to add it here." className="py-14" />
           ) : (
             cart.map((item) => (
               <CartItemRow
@@ -253,12 +289,13 @@ export default function POS() {
                 onIncrease={increaseQty}
                 onDecrease={decreaseQty}
                 onRemove={removeFromCart}
+                onPriceChange={updatePrice}
               />
             ))
           )}
         </div>
 
-        <div className="space-y-3 border-t border-border p-4">
+        <div className="space-y-3 border-t border-border p-5">
           <Select value={customerId} onValueChange={handleCustomerSelect}>
             <SelectTrigger><SelectValue placeholder="Customer" /></SelectTrigger>
             <SelectContent>
@@ -267,15 +304,17 @@ export default function POS() {
             </SelectContent>
           </Select>
 
-          <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className={cn('space-y-2 rounded-lg border p-3', remainingBalance > 0 ? 'border-destructive/40' : 'border-border')}>
             <p className="text-xs font-medium text-muted-foreground">
-              Customer info <span className="font-normal">(optional — only needed for partial payment tracking)</span>
+              Customer info{' '}
+              <span className={cn('font-normal', remainingBalance > 0 && 'text-destructive')}>
+                {remainingBalance > 0 ? '(required — this sale has a remaining balance)' : '(optional — only needed for partial payment tracking)'}
+              </span>
             </p>
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Name" className="h-8 text-xs" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-              <Input placeholder="Phone" className="h-8 text-xs" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-              <Input placeholder="Address" className="h-8 text-xs" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
-              <Input placeholder="CNIC" className="h-8 text-xs" value={customerCnic} onChange={(e) => setCustomerCnic(e.target.value)} />
+              <Input placeholder="Name" required={remainingBalance > 0} className="h-8 text-xs" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+              <Input placeholder="Phone" required={remainingBalance > 0} className="h-8 text-xs" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+              <Input placeholder="Address" className="h-8 text-xs col-span-2" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
             </div>
           </div>
 
@@ -291,7 +330,7 @@ export default function POS() {
                 min="0"
                 step="0.01"
                 value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
+                onChange={(e) => setDiscount(e.target.value.replace('-', ''))}
                 className="h-7 w-24 text-right"
               />
             </div>
@@ -299,9 +338,9 @@ export default function POS() {
               <span className="text-muted-foreground">Tax ({taxRate}%)</span>
               <span>{formatCurrency(taxAmount, currency)}</span>
             </div>
-            <div className="flex items-center justify-between border-t border-border pt-2 text-base font-bold">
+            <div className="mt-1 flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2.5 text-base font-bold">
               <span>Grand Total</span>
-              <span className="text-primary">{formatCurrency(grandTotal, currency)}</span>
+              <span className="text-lg text-primary">{formatCurrency(grandTotal, currency)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Amount Paid</span>
@@ -351,7 +390,7 @@ export default function POS() {
             ))}
           </div>
 
-          <Button className="w-full" size="lg" loading={completing} onClick={handleCompleteSale} disabled={cart.length === 0}>
+          <Button variant="success" className="w-full" size="lg" loading={completing} onClick={handleCompleteSale} disabled={cart.length === 0}>
             Complete Sale
           </Button>
         </div>

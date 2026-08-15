@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { generateInvoicePdf } from '@/lib/generateInvoicePdf';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 
-const PAYMENT_STATUS_VARIANT = { paid: 'success', partial: 'warning', unpaid: 'destructive' };
+const PAYMENT_STATUS_VARIANT = { paid: 'success', partial: 'orange', unpaid: 'destructive' };
 
 export default function Invoice() {
   const { id } = useParams();
@@ -48,7 +48,7 @@ export default function Invoice() {
           <ArrowLeft className="h-4 w-4" /> Back to POS
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => window.print()}>
+          <Button variant="outline" className="border-primary/30 text-primary hover:bg-primary/5" onClick={() => window.print()}>
             <Printer className="h-4 w-4" /> Print
           </Button>
           <Button onClick={() => generateInvoicePdf(sale, settings)}>

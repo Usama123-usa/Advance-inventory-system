@@ -3,7 +3,6 @@ import { Plus, Search, Pencil, Trash2, Package, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage, cachedGet } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useStore } from '@/context/StoreContext';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -21,7 +20,6 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { TileOptionField } from '@/components/products/TileOptionField';
-import { formatCurrency } from '@/lib/utils';
 
 // Drives the Tiles form's 5 manual-entry fields, each backed by its own
 // persisted, user-built option list (tile_field_options.field_name).
@@ -39,7 +37,6 @@ const emptyForm = {
   name: '',
   categoryId: '',
   purchasePrice: '',
-  sellingPrice: '',
   quantity: '',
   lowStockThreshold: '5',
   description: '',
@@ -60,7 +57,7 @@ const emptyForm = {
 // Memoized row — with stable onEdit/onDeleteRequest callbacks from the
 // parent, unrelated row updates (e.g. editing a different product) skip
 // re-rendering every other row in the table.
-const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProducts, currency, onEdit, onDeleteRequest }) {
+const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProducts, onEdit, onDeleteRequest }) {
   return (
     <TableRow>
       <TableCell>
@@ -77,7 +74,6 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProduct
           ? [product.size, product.glaze_grade].filter(Boolean).join(' · ') || '—'
           : [product.company, product.article].filter(Boolean).join(' · ') || '—'}
       </TableCell>
-      <TableCell className="font-medium">{formatCurrency(product.selling_price, currency)}</TableCell>
       <TableCell>
         <span className={product.quantity <= product.low_stock_threshold ? 'text-destructive font-semibold' : ''}>
           {product.quantity} {product.unit}
@@ -92,7 +88,7 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProduct
         <TableCell className="text-right">
           <div className="flex justify-end gap-1">
             <Button variant="ghost" size="icon" onClick={() => onEdit(product)}>
-              <Pencil className="h-4 w-4" />
+              <Pencil className="h-4 w-4 text-primary" />
             </Button>
             {isAdmin && (
               <Button variant="ghost" size="icon" onClick={() => onDeleteRequest(product)}>
@@ -107,8 +103,6 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProduct
 });
 
 export default function Products() {
-  const { settings } = useSettings();
-  const currency = settings?.currency || 'PKR';
   const { isAdmin, isStoreManager } = useAuth();
   const canManageProducts = isAdmin || isStoreManager;
   const { stores } = useStore();
@@ -214,7 +208,6 @@ export default function Products() {
       name: product.name,
       categoryId: product.category_id || '',
       purchasePrice: String(product.purchase_price),
-      sellingPrice: String(product.selling_price),
       quantity: String(product.quantity),
       lowStockThreshold: String(product.low_stock_threshold),
       description: product.description || '',
@@ -346,7 +339,6 @@ export default function Products() {
                   <TableHead>Product</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Details</TableHead>
-                  <TableHead>Price</TableHead>
                   <TableHead>Stock</TableHead>
                   <TableHead>Status</TableHead>
                   {canManageProducts && <TableHead className="text-right">Actions</TableHead>}
@@ -359,7 +351,6 @@ export default function Products() {
                     product={p}
                     isAdmin={isAdmin}
                     canManageProducts={canManageProducts}
-                    currency={currency}
                     onEdit={openEdit}
                     onDeleteRequest={handleDeleteRequest}
                   />
@@ -461,15 +452,6 @@ export default function Products() {
                   <Input type="number" step="0.01" min="0" required value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Selling Price{isTilesForm ? ' (per box)' : ''}</Label>
-                  <Input type="number" step="0.01" min="0" required value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
-                  {isTilesForm && form.sqrMeter && form.ratePerMeter && (
-                    <p className="text-xs text-muted-foreground">
-                      Suggested: {(Number(form.sqrMeter) * Number(form.ratePerMeter)).toFixed(2)} (SQR Meter × Rate per Meter) — the invoice always bills tiles at this rate regardless of what you enter here.
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
                   <Label>Low Quantity Alert</Label>
                   <Input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setForm({ ...form, lowStockThreshold: e.target.value })} />
                 </div>
@@ -511,7 +493,7 @@ export default function Products() {
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" loading={saving}>{editing ? 'Save Changes' : 'Create Product'}</Button>
+                <Button type="submit" variant="success" loading={saving}>{editing ? 'Save Changes' : 'Create Product'}</Button>
               </DialogFooter>
             </form>
           </DialogContent>

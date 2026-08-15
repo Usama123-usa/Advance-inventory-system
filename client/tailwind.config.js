@@ -14,6 +14,9 @@ export default {
       },
       colors: {
         sidebar: 'hsl(var(--sidebar))',
+        'sidebar-foreground': 'hsl(var(--sidebar-foreground))',
+        'sidebar-muted': 'hsl(var(--sidebar-muted))',
+        'sidebar-border': 'hsl(var(--sidebar-border))',
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
@@ -50,6 +53,18 @@ export default {
         warning: {
           DEFAULT: 'hsl(var(--warning))',
           foreground: 'hsl(var(--warning-foreground))',
+        },
+        purple: {
+          DEFAULT: 'hsl(var(--purple))',
+          foreground: 'hsl(var(--purple-foreground))',
+        },
+        orange: {
+          DEFAULT: 'hsl(var(--orange))',
+          foreground: 'hsl(var(--orange-foreground))',
+        },
+        rose: {
+          DEFAULT: 'hsl(var(--rose))',
+          foreground: 'hsl(var(--rose-foreground))',
         },
       },
       borderRadius: {

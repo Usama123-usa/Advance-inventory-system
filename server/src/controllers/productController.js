@@ -106,10 +106,10 @@ const buildProductPayload = (body) => {
     sku: body.sku?.trim() || null,
     category_id: body.categoryId || null,
     purchase_price: Number(body.purchasePrice) || 0,
-    // selling_price is a manually-entered reference price (shown on the
-    // product list / POS cart). It is NOT what a Tiles sale actually
-    // charges — create_sale() prices Tiles line items from sqr_meter x
-    // rate_per_meter directly, so it stays correct even if this drifts.
+    // selling_price is no longer entered on the product form — pricing is
+    // decided per line item at sale time, directly in the POS cart, and
+    // saved on sale_items instead. This column is kept (defaulted to 0) so
+    // existing rows and reports referencing it don't break.
     selling_price: Number(body.sellingPrice) || 0,
     // Tiles/Other forms don't expose a raw "unit" input — derive a sensible
     // one so existing "{quantity} {unit}" displays (Products table, POS

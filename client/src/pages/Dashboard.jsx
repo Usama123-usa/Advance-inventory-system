@@ -1,4 +1,5 @@
 import { useEffect, useState, memo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Package,
   Tags,
@@ -8,6 +9,9 @@ import {
   DollarSign,
   Wallet,
   CalendarRange,
+  Users,
+  Wallet2,
+  ChevronRight,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -26,7 +30,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
 
 const compactNumber = (value) =>
   new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
@@ -157,6 +161,26 @@ const RecentSalesList = memo(function RecentSalesList({ recentSales, currency })
   );
 });
 
+// Pure navigation shortcuts (no numeric stat behind them) styled to match
+// the StatCard family — used for pages that don't have a dashboard-ready
+// summary number wired up on the backend.
+function QuickLinkCard({ to, label, description, icon: Icon, iconClassName }) {
+  return (
+    <Link to={to} className="block">
+      <Card className="flex items-center gap-4 p-5 transition-transform hover:-translate-y-0.5 hover:shadow-lg">
+        <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary', iconClassName)}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base font-bold leading-tight">{label}</p>
+          <p className="truncate text-sm text-muted-foreground">{description}</p>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </Card>
+    </Link>
+  );
+}
+
 export default function Dashboard() {
   const { settings } = useSettings();
   const [summary, setSummary] = useState(null);
@@ -206,8 +230,20 @@ export default function Dashboard() {
       <PageHeader title="Dashboard" description="Overview of your store's performance" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Products" value={summary.totalProducts} icon={Package} />
-        <StatCard label="Total Categories" value={summary.totalCategories} icon={Tags} />
+        <StatCard
+          label="Total Products"
+          value={summary.totalProducts}
+          icon={Package}
+          to="/products"
+          iconClassName="bg-purple/10 text-purple"
+        />
+        <StatCard
+          label="Total Categories"
+          value={summary.totalCategories}
+          icon={Tags}
+          to="/categories"
+          iconClassName="bg-accent/10 text-accent"
+        />
         <StatCard
           label="Low Stock Items"
           value={summary.lowStockItems}
@@ -219,30 +255,51 @@ export default function Dashboard() {
           value={formatCurrency(summary.todaySales.total, currency)}
           trendLabel={`${summary.todaySales.count} orders today`}
           icon={CalendarDays}
+          to="/sales"
+          iconClassName="bg-success/10 text-success"
         />
         <StatCard
           label="Monthly Sales"
           value={formatCurrency(summary.monthlySales.total, currency)}
           trendLabel={`${summary.monthlySales.count} orders this month`}
           icon={TrendingUp}
+          to="/sales"
+          iconClassName="bg-success/10 text-success"
         />
         <StatCard
           label="Total Revenue"
           value={formatCurrency(summary.totalRevenue, currency)}
           icon={DollarSign}
-          iconClassName="bg-success/10 text-success"
+          iconClassName="bg-primary/10 text-primary"
         />
         <StatCard
           label="Today's Expenses"
           value={formatCurrency(summary.todayExpenses, currency)}
           icon={Wallet}
-          iconClassName="bg-destructive/10 text-destructive"
+          iconClassName="bg-rose/10 text-rose"
         />
         <StatCard
           label="This Month's Expenses"
           value={formatCurrency(summary.monthlyExpenses, currency)}
           icon={CalendarRange}
-          iconClassName="bg-destructive/10 text-destructive"
+          iconClassName="bg-rose/10 text-rose"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <QuickLinkCard
+          to="/customers"
+          label="Customers"
+          description="View and manage your customer directory"
+          icon={Users}
+          iconClassName="bg-orange/10 text-orange"
+        />
+        <QuickLinkCard
+          to="/pending-payments"
+          label="Pending Payments"
+          description="Track outstanding balances and receive payments"
+          icon={Wallet2}
+          iconClassName="bg-rose/10 text-rose"
         />
       </div>
 
@@ -276,8 +333,11 @@ export default function Dashboard() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Recent Sales</CardTitle>
+          <Link to="/sales" className="text-xs font-medium text-primary hover:underline">
+            View all
+          </Link>
         </CardHeader>
         <CardContent>
           <RecentSalesList recentSales={recentSales} currency={currency} />

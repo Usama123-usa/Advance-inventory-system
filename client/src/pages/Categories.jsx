@@ -171,7 +171,7 @@ export default function Categories() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(cat)}>
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-4 w-4 text-primary" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(cat)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -244,7 +244,7 @@ export default function Categories() {
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" loading={saving}>
+              <Button type="submit" variant="success" loading={saving}>
                 {editing ? 'Save Changes' : 'Create Category'}
               </Button>
             </DialogFooter>

@@ -14,6 +14,8 @@ const buttonVariants = cva(
         ghost: 'hover:bg-secondary',
         destructive: 'bg-destructive text-destructive-foreground hover:opacity-90',
         success: 'bg-success text-success-foreground hover:opacity-90',
+        warning: 'bg-warning text-warning-foreground hover:opacity-90',
+        purple: 'bg-purple text-purple-foreground hover:opacity-90',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {

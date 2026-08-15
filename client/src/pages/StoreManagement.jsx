@@ -159,7 +159,7 @@ export default function StoreManagement() {
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(store)}>
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4 text-primary" />
                       </Button>
                       {!store.is_main && (
                         <Button variant="ghost" size="icon" onClick={() => (store.is_active ? setArchiveTarget(store) : toggleActive(store))}>
@@ -202,7 +202,7 @@ export default function StoreManagement() {
             </label>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" loading={creating}>Create Store</Button>
+              <Button type="submit" variant="success" loading={creating}>Create Store</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -218,7 +218,7 @@ export default function StoreManagement() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-              <Button type="submit" loading={saving}>Save Changes</Button>
+              <Button type="submit" variant="success" loading={saving}>Save Changes</Button>
             </DialogFooter>
           </form>
         </DialogContent>

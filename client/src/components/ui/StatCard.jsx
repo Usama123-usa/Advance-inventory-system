@@ -1,9 +1,14 @@
+import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Card } from './Card';
 
-export function StatCard({ label, value, icon: Icon, trend, trendLabel, iconClassName, className }) {
+export function StatCard({ label, value, icon: Icon, trend, trendLabel, iconClassName, className, to }) {
+  const Wrapper = to ? Link : 'div';
+  const wrapperProps = to ? { to } : {};
+
   return (
-    <Card className={cn('p-5 transition-transform hover:-translate-y-0.5', className)}>
+    <Wrapper {...wrapperProps} className={cn(to && 'block')}>
+    <Card className={cn('p-5 transition-transform hover:-translate-y-0.5', to && 'cursor-pointer hover:shadow-lg', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-muted-foreground">{label}</p>
@@ -26,5 +31,6 @@ export function StatCard({ label, value, icon: Icon, trend, trendLabel, iconClas
         )}
       </div>
     </Card>
+    </Wrapper>
   );
 }

@@ -11,7 +11,6 @@ router.use(resolveStore);
 
 const productValidation = [
   body('name').trim().notEmpty().withMessage('Product name is required'),
-  body('sellingPrice').isFloat({ min: 0 }).withMessage('Selling price must be a positive number'),
   body('purchasePrice').isFloat({ min: 0 }).withMessage('Purchase price must be a positive number'),
 ];
 

@@ -86,10 +86,15 @@ export default function Inventory() {
 
   const handleAdjust = async (e) => {
     e.preventDefault();
+    const qty = Number(quantity);
+    if (adjustDialog.type === 'out' && qty > adjustDialog.product.quantity) {
+      toast.error(`Not enough stock — only ${adjustDialog.product.quantity} ${adjustDialog.product.unit} available`);
+      return;
+    }
     setSaving(true);
     try {
       const endpoint = adjustDialog.type === 'in' ? '/inventory/stock-in' : '/inventory/stock-out';
-      await api.post(endpoint, { productId: adjustDialog.product.id, quantity: Number(quantity), reason });
+      await api.post(endpoint, { productId: adjustDialog.product.id, quantity: qty, reason });
       toast.success(`Stock ${adjustDialog.type === 'in' ? 'added' : 'removed'} successfully`);
       setAdjustDialog(null);
       fetchCurrent();

@@ -23,6 +23,7 @@ const Settings = lazy(() => import('@/pages/Settings'));
 const Expenses = lazy(() => import('@/pages/Expenses'));
 const PendingPayments = lazy(() => import('@/pages/PendingPayments'));
 const StoreManagement = lazy(() => import('@/pages/StoreManagement'));
+const UserManagement = lazy(() => import('@/pages/UserManagement'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 function RouteFallback() {
@@ -81,6 +82,14 @@ export default function App() {
                       element={
                         <RoleGate roles={['admin']}>
                           <StoreManagement />
+                        </RoleGate>
+                      }
+                    />
+                    <Route
+                      path="/user-management"
+                      element={
+                        <RoleGate roles={['admin']}>
+                          <UserManagement />
                         </RoleGate>
                       }
                     />

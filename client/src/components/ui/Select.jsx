@@ -39,7 +39,7 @@ export const SelectContent = ({ className, children, ...props }) => (
 export const SelectItem = ({ className, children, ...props }) => (
   <SelectPrimitive.Item
     className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-md py-2 pl-8 pr-3 text-sm outline-none data-[highlighted]:bg-secondary',
+      'relative flex w-full cursor-pointer select-none items-center rounded-md py-2 pl-8 pr-3 text-sm outline-none data-[highlighted]:bg-secondary data-[state=checked]:bg-primary/10 data-[state=checked]:font-medium data-[state=checked]:text-primary',
       className
     )}
     {...props}

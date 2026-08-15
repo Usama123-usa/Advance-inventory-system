@@ -90,7 +90,7 @@ const getSaleById = asyncHandler(async (req, res) => {
 const getPendingPayments = asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('customer_balances')
-    .select('id, customer_name, customer_phone, customer_cnic, total_remaining_balance, updated_at')
+    .select('id, customer_name, customer_phone, customer_address, total_remaining_balance, updated_at')
     .eq('store_id', req.storeId)
     .gt('total_remaining_balance', 0)
     .order('updated_at', { ascending: false });
@@ -99,17 +99,72 @@ const getPendingPayments = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+// POST /api/sales/pending-payments
+// body: { customerName, customerPhone, customerAddress, amount, paymentDate }
+// "Add New Customer" — records an opening pending balance that isn't tied to
+// any sale, via create_customer_balance().
+const createPendingCustomer = asyncHandler(async (req, res) => {
+  const { customerName, customerPhone, customerAddress, amount, paymentDate } = req.body;
+
+  if (!customerName || !String(customerName).trim()) {
+    throw new ApiError(400, 'Customer name is required');
+  }
+  if (!customerPhone || !String(customerPhone).trim()) {
+    throw new ApiError(400, 'Customer phone is required so this debt can be traced back to them');
+  }
+  if (!amount || Number(amount) <= 0) {
+    throw new ApiError(400, 'Amount must be greater than zero');
+  }
+
+  const { data, error } = await supabase.rpc('create_customer_balance', {
+    p_store_id: req.storeId,
+    p_customer_name: customerName,
+    p_customer_phone: customerPhone || null,
+    p_customer_address: customerAddress || null,
+    p_amount: Number(amount),
+    p_payment_date: paymentDate || null,
+    p_created_by: req.user.id,
+  });
+
+  assertNoSupabaseError(error, 'Failed to add customer');
+  res.status(201).json({ success: true, data });
+});
+
+// GET /api/sales/pending-payments/:id/history
+// Full charge/payment ledger for one customer_balances row.
+const getPendingPaymentHistory = asyncHandler(async (req, res) => {
+  const { data: balance, error: balanceError } = await supabase
+    .from('customer_balances')
+    .select('id, customer_name, customer_phone, customer_address, total_remaining_balance')
+    .eq('id', req.params.id)
+    .eq('store_id', req.storeId)
+    .maybeSingle();
+
+  assertNoSupabaseError(balanceError, 'Failed to load customer');
+  if (!balance) throw new ApiError(404, 'Pending payment record not found');
+
+  const { data: history, error } = await supabase
+    .from('customer_payment_history')
+    .select('id, entry_type, amount, payment_date, notes, created_at')
+    .eq('customer_balance_id', req.params.id)
+    .order('payment_date', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  assertNoSupabaseError(error, 'Failed to load payment history');
+  res.json({ success: true, data: { customer: balance, history } });
+});
+
 // PUT /api/sales/pending-payments/:id
-// body: { customerName, customerPhone, customerCnic, totalRemainingBalance }
+// body: { customerName, customerPhone, customerAddress, totalRemainingBalance }
 // Edits a customer_balances row directly — contact details and/or a manual
 // correction to the outstanding amount.
 const updatePendingPayment = asyncHandler(async (req, res) => {
-  const { customerName, customerPhone, customerCnic, totalRemainingBalance } = req.body;
+  const { customerName, customerPhone, customerAddress, totalRemainingBalance } = req.body;
 
   const updates = {};
   if (customerName !== undefined) updates.customer_name = customerName.trim() || 'Unknown';
   if (customerPhone !== undefined) updates.customer_phone = customerPhone.trim() || null;
-  if (customerCnic !== undefined) updates.customer_cnic = customerCnic.trim() || null;
+  if (customerAddress !== undefined) updates.customer_address = customerAddress.trim() || null;
   if (totalRemainingBalance !== undefined) updates.total_remaining_balance = Number(totalRemainingBalance);
 
   const { data, error } = await supabase
@@ -117,7 +172,7 @@ const updatePendingPayment = asyncHandler(async (req, res) => {
     .update(updates)
     .eq('id', req.params.id)
     .eq('store_id', req.storeId)
-    .select('id, customer_name, customer_phone, customer_cnic, total_remaining_balance, updated_at')
+    .select('id, customer_name, customer_phone, customer_address, total_remaining_balance, updated_at')
     .maybeSingle();
 
   assertNoSupabaseError(error, 'Failed to update pending payment');
@@ -127,19 +182,39 @@ const updatePendingPayment = asyncHandler(async (req, res) => {
 });
 
 // POST /api/sales/pending-payments/:id/payment
-// body: { amount }
+// body: { amount, paymentDate }
 // Records a payment against the outstanding balance via record_customer_payment().
 const receivePendingPayment = asyncHandler(async (req, res) => {
-  const { amount } = req.body;
+  const { amount, paymentDate } = req.body;
 
   const { data, error } = await supabase.rpc('record_customer_payment', {
     p_store_id: req.storeId,
     p_balance_id: req.params.id,
     p_amount: Number(amount),
+    p_payment_date: paymentDate || null,
+    p_created_by: req.user.id,
   });
 
   assertNoSupabaseError(error, 'Failed to record payment');
   res.json({ success: true, data });
+});
+
+// DELETE /api/sales/pending-payments/:id  (admin only)
+// Removes a customer_balances row (and its history, via cascade) — a
+// write-off/void of the pending-payment record itself. Does not touch the
+// originating sale's own paid_amount/remaining_balance fields.
+const deletePendingPayment = asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('customer_balances')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('store_id', req.storeId)
+    .select('id')
+    .maybeSingle();
+
+  assertNoSupabaseError(error, 'Failed to delete pending payment');
+  if (!data) throw new ApiError(404, 'Pending payment record not found');
+  res.json({ success: true, message: 'Pending payment record deleted' });
 });
 
 // DELETE /api/sales/:id  (admin only)
@@ -158,14 +233,22 @@ const deleteSale = asyncHandler(async (req, res) => {
 });
 
 // POST /api/sales
-// body: { customerId, items: [{ productId, quantity }], discount, paymentMethod,
-//         notes, paidAmount, customerName, customerPhone, customerAddress, customerCnic }
+// body: { invoiceNumber, customerId, items: [{ productId, quantity, unitPrice }],
+//         discount, paymentMethod, notes, paidAmount, customerName,
+//         customerPhone, customerAddress, customerCnic }
 // Delegates to the create_sale() Postgres function so stock validation,
 // totals, sale/sale_items/inventory_logs/customer_balances writes all happen
-// atomically. Omitting paidAmount means "paid in full" — customer info stays
-// fully optional in that case; it only matters for partial payment tracking.
+// atomically. Each item's unitPrice is entered by the cashier in the POS
+// cart — the product catalog no longer supplies a price, and this typed
+// price becomes the permanent price of record on the invoice. invoiceNumber
+// is entered manually by the cashier too — the database no longer generates
+// one — and must be unique within the current store (checked inside
+// create_sale() itself, before anything is written). Omitting paidAmount
+// means "paid in full" — customer info stays fully optional in that case;
+// it only matters for partial payment tracking.
 const createSale = asyncHandler(async (req, res) => {
   const {
+    invoiceNumber,
     customerId,
     items,
     discount = 0,
@@ -178,8 +261,14 @@ const createSale = asyncHandler(async (req, res) => {
     customerCnic,
   } = req.body;
 
+  if (!invoiceNumber || !String(invoiceNumber).trim()) {
+    throw new ApiError(400, 'Invoice number is required');
+  }
   if (!Array.isArray(items) || items.length === 0) {
     throw new ApiError(400, 'At least one item is required to complete a sale');
+  }
+  if (items.some((i) => i.unitPrice === undefined || i.unitPrice === null || Number(i.unitPrice) < 0)) {
+    throw new ApiError(400, 'Every item needs a valid selling price');
   }
 
   const { data: sale, error } = await supabase.rpc('create_sale', {
@@ -187,9 +276,10 @@ const createSale = asyncHandler(async (req, res) => {
     p_customer_id: customerId || null,
     p_cashier_id: req.user.id,
     p_items: items,
-    p_discount: Number(discount) || 0,
+    p_discount: Math.max(Number(discount) || 0, 0),
     p_payment_method: paymentMethod,
     p_notes: notes,
+    p_invoice_number: String(invoiceNumber).trim(),
     p_paid_amount: paidAmount === undefined || paidAmount === null || paidAmount === '' ? null : Number(paidAmount),
     p_customer_name: customerName || null,
     p_customer_phone: customerPhone || null,
@@ -205,8 +295,11 @@ module.exports = {
   getSales,
   getSaleById,
   getPendingPayments,
+  createPendingCustomer,
+  getPendingPaymentHistory,
   updatePendingPayment,
   receivePendingPayment,
+  deletePendingPayment,
   createSale,
   deleteSale,
 };

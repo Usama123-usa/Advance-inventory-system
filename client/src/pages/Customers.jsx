@@ -162,14 +162,14 @@ export default function Customers() {
                     <TableCell className="text-muted-foreground">{c.phone || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{c.email || '—'}</TableCell>
                     <TableCell><Badge variant="secondary">{c.total_orders}</Badge></TableCell>
-                    <TableCell className="font-medium">{formatCurrency(c.total_spent, currency)}</TableCell>
+                    <TableCell className="font-medium text-success">{formatCurrency(c.total_spent, currency)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openHistory(c)}>
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4 text-purple" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-4 w-4 text-primary" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(c)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -209,7 +209,7 @@ export default function Customers() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" loading={saving}>{editing ? 'Save Changes' : 'Add Customer'}</Button>
+              <Button type="submit" variant="success" loading={saving}>{editing ? 'Save Changes' : 'Add Customer'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

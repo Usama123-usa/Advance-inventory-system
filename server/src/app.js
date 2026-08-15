@@ -16,6 +16,7 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const storeRoutes = require('./routes/storeRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const tileOptionRoutes = require('./routes/tileOptionRoutes');
+const userRoutes = require('./routes/userRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -55,6 +56,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/tile-options', tileOptionRoutes);
+app.use('/api/users', userRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

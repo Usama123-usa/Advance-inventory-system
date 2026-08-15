@@ -4,6 +4,7 @@ import { Menu, Sun, Moon, LogOut, ChevronDown, UserCircle, Store } from 'lucide-
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useStore } from '@/context/StoreContext';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select';
 
 export function Navbar({ onMenuClick }) {
   const { theme, toggleTheme } = useTheme();
@@ -17,8 +18,17 @@ export function Navbar({ onMenuClick }) {
     navigate('/login');
   };
 
+  // A full reload guarantees every page's data refetches scoped to the
+  // newly selected store — the server already enforces store isolation via
+  // req.storeId, this just makes the client stop showing stale, already-
+  // fetched data from the previous store.
+  const handleStoreChange = (value) => {
+    setCurrentStoreId(value);
+    window.location.reload();
+  };
+
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-card/80 px-4 backdrop-blur-xl print:hidden sm:px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-card/80 px-4 shadow-sm backdrop-blur-xl print:hidden sm:px-6">
       <button onClick={onMenuClick} className="rounded-md p-2 hover:bg-secondary lg:hidden">
         <Menu className="h-5 w-5" />
       </button>
@@ -26,23 +36,24 @@ export function Navbar({ onMenuClick }) {
       <div className="flex-1" />
 
       {isAdmin && stores.length > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-2.5 py-1.5 text-sm">
-          <Store className="h-4 w-4 text-muted-foreground" />
-          <select
-            value={currentStoreId || ''}
-            onChange={(e) => setCurrentStoreId(e.target.value)}
-            className="bg-transparent text-sm font-medium outline-none"
-          >
+        <Select value={currentStoreId || ''} onValueChange={handleStoreChange}>
+          <SelectTrigger className="w-auto min-w-[10rem] gap-2 border-primary/20 bg-primary/5 font-semibold">
+            <span className="flex min-w-0 items-center gap-2">
+              <Store className="h-4 w-4 shrink-0 text-primary" />
+              <SelectValue placeholder="Select store" />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
             {stores
               .filter((s) => s.is_active)
               .map((s) => (
-                <option key={s.id} value={s.id}>
+                <SelectItem key={s.id} value={s.id}>
                   {s.name}
                   {s.is_main ? ' (Main)' : ''}
-                </option>
+                </SelectItem>
               ))}
-          </select>
-        </div>
+          </SelectContent>
+        </Select>
       )}
 
       <div className="flex items-center gap-2">

@@ -4,58 +4,76 @@
 
 @layer base {
   :root {
-    --background: 250 28% 98%;
-    --foreground: 258 30% 14%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 258 30% 14%;
+    --card-foreground: 222 47% 11%;
     --card-gradient-from: 0 0% 100%;
-    --card-gradient-to: 250 30% 98%;
+    --card-gradient-to: 210 40% 98%;
     --sidebar: 0 0% 100%;
-    --border: 255 20% 90%;
-    --input: 255 20% 90%;
-    --ring: 263 80% 60%;
-    --primary: 263 80% 60%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-muted: 215 16% 47%;
+    --sidebar-border: 214 32% 91%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 226 71% 40%;
+    --primary: 226 71% 40%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 260 30% 95%;
-    --secondary-foreground: 260 30% 30%;
-    --muted: 255 20% 95%;
-    --muted-foreground: 255 10% 46%;
-    --accent: 280 65% 58%;
+    --secondary: 210 30% 95%;
+    --secondary-foreground: 222 30% 25%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 199 89% 48%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 60% 40%;
+    --success: 142 71% 35%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 10%;
-    --radius: 0.75rem;
+    --purple: 262 60% 50%;
+    --purple-foreground: 0 0% 100%;
+    --orange: 22 90% 50%;
+    --orange-foreground: 0 0% 100%;
+    --rose: 347 77% 50%;
+    --rose-foreground: 0 0% 100%;
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 250 26% 7%;
-    --foreground: 255 20% 95%;
-    --card: 250 20% 11%;
-    --card-foreground: 255 20% 95%;
-    --card-gradient-from: 250 22% 14%;
-    --card-gradient-to: 250 22% 10%;
-    --sidebar: 250 26% 6%;
-    --border: 252 16% 22%;
-    --input: 252 16% 22%;
-    --ring: 263 85% 68%;
-    --primary: 263 85% 68%;
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 40% 11%;
+    --card-foreground: 210 40% 98%;
+    --card-gradient-from: 222 35% 14%;
+    --card-gradient-to: 222 40% 9%;
+    --sidebar: 224 45% 12%;
+    --sidebar-foreground: 210 30% 92%;
+    --sidebar-muted: 217 20% 65%;
+    --sidebar-border: 220 30% 20%;
+    --border: 220 25% 20%;
+    --input: 220 25% 20%;
+    --ring: 217 91% 60%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 250 18% 16%;
-    --secondary-foreground: 255 12% 88%;
-    --muted: 250 16% 15%;
-    --muted-foreground: 255 10% 62%;
-    --accent: 282 70% 66%;
+    --secondary: 217 20% 16%;
+    --secondary-foreground: 210 20% 85%;
+    --muted: 217 20% 14%;
+    --muted-foreground: 217 12% 60%;
+    --accent: 199 89% 55%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 70% 62%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 55% 48%;
+    --success: 142 60% 48%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 58%;
     --warning-foreground: 0 0% 10%;
+    --purple: 262 65% 65%;
+    --purple-foreground: 0 0% 100%;
+    --orange: 22 90% 58%;
+    --orange-foreground: 0 0% 100%;
+    --rose: 347 80% 62%;
+    --rose-foreground: 0 0% 100%;
   }
 
   * {
@@ -68,7 +86,7 @@
   }
 
   .dark body {
-    background-image: radial-gradient(circle at 15% 0%, hsl(280 45% 22% / 0.5), transparent 45%);
+    background-image: radial-gradient(circle at 15% 0%, hsl(217 70% 25% / 0.45), transparent 45%);
     background-attachment: fixed;
   }
 
@@ -90,7 +108,7 @@
   }
 
   .card-shadow {
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(124 58 237 / 0.12);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(30 64 175 / 0.10);
   }
 
   .dark .card-shadow {
