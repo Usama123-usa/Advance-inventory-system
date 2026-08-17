@@ -29,7 +29,7 @@ const NAV_ITEMS = [
   { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/expenses', label: 'Expenses', icon: Wallet, roles: ['admin', 'staff', 'store_manager'] },
   { to: '/pending-payments', label: 'Pending Payments', icon: Wallet2, roles: ['admin', 'staff', 'store_manager'] },
-  { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'staff', 'store_manager'] },
+  { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin'] },
   { to: '/store-management', label: 'Store Management', icon: Building2, roles: ['admin'] },
   { to: '/user-management', label: 'User Management', icon: UserCog, roles: ['admin'] },
   { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },

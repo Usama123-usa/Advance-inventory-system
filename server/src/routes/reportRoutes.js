@@ -5,10 +5,10 @@ const { authenticate, requireRole, resolveStore } = require('../middleware/auth'
 const router = express.Router();
 
 router.use(authenticate);
+router.use(requireRole('admin'));
 
-// Admin-only combined view — registered before resolveStore since it isn't
-// scoped to a single store.
-router.get('/all-stores', requireRole('admin'), reportController.getAllStoresReport);
+// Registered before resolveStore since it isn't scoped to a single store.
+router.get('/all-stores', reportController.getAllStoresReport);
 
 router.use(resolveStore);
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, Sun, Moon, LogOut, ChevronDown, UserCircle, Store } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
@@ -11,7 +11,17 @@ export function Navbar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const { stores, currentStoreId, setCurrentStoreId, isAdmin } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   const handleLogout = () => {
     logout();
@@ -65,7 +75,7 @@ export function Navbar({ onMenuClick }) {
           {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
         </button>
 
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-secondary"
@@ -81,17 +91,14 @@ export function Navbar({ onMenuClick }) {
           </button>
 
           {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 z-20 mt-2 w-44 animate-slide-up rounded-lg border border-border bg-card p-1 shadow-xl">
-                <button
-                  onClick={handleLogout}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
-                >
-                  <LogOut className="h-4 w-4" /> Logout
-                </button>
-              </div>
-            </>
+            <div className="absolute right-0 z-20 mt-2 w-44 animate-slide-up rounded-lg border border-border bg-card p-1 shadow-xl">
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+              >
+                <LogOut className="h-4 w-4" /> Logout
+              </button>
+            </div>
           )}
         </div>
       </div>

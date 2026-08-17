@@ -6,7 +6,7 @@ const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
 
-const USER_SELECT = 'id, name, email, role, is_active, store_id, created_at, updated_at, stores(name)';
+const USER_SELECT = 'id, name, email, role, is_active, store_id, created_at, updated_at, stores!store_id(name)';
 
 const flattenUser = (user) => {
   if (!user) return user;

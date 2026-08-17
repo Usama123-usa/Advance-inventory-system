@@ -68,7 +68,14 @@ export default function App() {
                     <Route path="/customers" element={<Customers />} />
                     <Route path="/expenses" element={<Expenses />} />
                     <Route path="/pending-payments" element={<PendingPayments />} />
-                    <Route path="/reports" element={<Reports />} />
+                    <Route
+                      path="/reports"
+                      element={
+                        <RoleGate roles={['admin']}>
+                          <Reports />
+                        </RoleGate>
+                      }
+                    />
                     <Route
                       path="/settings"
                       element={
