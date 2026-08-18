@@ -134,8 +134,16 @@ export default function Products() {
   useEffect(() => {
     api.get('/tile-options').then(({ data }) => {
       const grouped = { ...emptyTileOptions };
+      const seen = new Set();
       data.data.forEach((opt) => {
-        if (grouped[opt.field_name]) grouped[opt.field_name].push(opt);
+        // Dedupe by field + normalized value: the DB's unique index is
+        // case-sensitive, so "60x60" and "60X60" (or stale pre-migration
+        // rows) can both exist and would otherwise render as look-alike
+        // duplicate entries in the dropdown.
+        const dedupeKey = `${opt.field_name}:${opt.option_value.trim().toLowerCase()}`;
+        if (!grouped[opt.field_name] || seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+        grouped[opt.field_name].push(opt);
       });
       setTileOptions(grouped);
     }).catch(() => {});
@@ -145,7 +153,10 @@ export default function Products() {
     try {
       const { data } = await api.post('/tile-options', { fieldName: fieldKey, value });
       setTileOptions((prev) => {
-        if (prev[fieldKey].some((o) => o.id === data.data.id)) return prev;
+        const normalized = data.data.option_value.trim().toLowerCase();
+        if (prev[fieldKey].some((o) => o.id === data.data.id || o.option_value.trim().toLowerCase() === normalized)) {
+          return prev;
+        }
         return {
           ...prev,
           [fieldKey]: [...prev[fieldKey], data.data].sort((a, b) => a.option_value.localeCompare(b.option_value)),
@@ -364,7 +375,19 @@ export default function Products() {
 
       {canManageProducts && (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent
+            className="max-w-2xl"
+            onInteractOutside={(e) => {
+              // The tile-option dropdown panels (Size/Grade/SQR Meter/etc.) are
+              // portaled straight to <body> so they aren't clipped by this
+              // dialog's own overflow — but that also puts them outside
+              // Radix's DialogContent DOM subtree, so a click on one of their
+              // options otherwise registers as an "outside click" and closes
+              // the whole dialog before the selection is ever seen.
+              const target = e.detail?.originalEvent?.target ?? e.target;
+              if (target?.closest?.('[data-tile-option-panel]')) e.preventDefault();
+            }}
+          >
             <DialogHeader>
               <DialogTitle>{editing ? 'Edit Product' : 'Add Product'}</DialogTitle>
             </DialogHeader>

@@ -16,8 +16,21 @@ import { cn } from '@/lib/utils';
 export function TileOptionField({ label, type = 'text', value, onChange, options, onAdd, onDelete, placeholder }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState(null);
+  const [adding, setAdding] = useState(false);
   const wrapperRef = useRef(null);
   const panelRef = useRef(null);
+
+  // Defensive dedup at render time (by normalized value) — a belt-and-
+  // suspenders guard in case the options list handed down ever contains a
+  // duplicate, so the dropdown itself never displays the same value twice.
+  const uniqueOptions = [];
+  const seenValues = new Set();
+  for (const opt of options) {
+    const key = opt.option_value.trim().toLowerCase();
+    if (seenValues.has(key)) continue;
+    seenValues.add(key);
+    uniqueOptions.push(opt);
+  }
 
   useLayoutEffect(() => {
     if (!open || !wrapperRef.current) return;
@@ -49,11 +62,16 @@ export function TileOptionField({ label, type = 'text', value, onChange, options
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [open]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
+    if (adding) return; // guards against a double-click firing two POSTs before state updates
     const trimmed = String(value ?? '').trim();
     if (!trimmed) return;
-    if (!options.some((o) => o.option_value === trimmed)) {
-      onAdd(trimmed);
+    if (uniqueOptions.some((o) => o.option_value.trim().toLowerCase() === trimmed.toLowerCase())) return;
+    setAdding(true);
+    try {
+      await onAdd(trimmed);
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -86,7 +104,7 @@ export function TileOptionField({ label, type = 'text', value, onChange, options
             <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
           </button>
         </div>
-        <Button type="button" variant="outline" onClick={handleAdd}>
+        <Button type="button" variant="outline" onClick={handleAdd} disabled={adding}>
           <Plus className="h-4 w-4" /> Add
         </Button>
       </div>
@@ -94,12 +112,19 @@ export function TileOptionField({ label, type = 'text', value, onChange, options
       {open && rect && createPortal(
         <div
           ref={panelRef}
-          style={{ position: 'fixed', top: rect.top, left: rect.left, width: rect.width }}
+          data-tile-option-panel=""
+          // Radix's modal Dialog sets document.body.style.pointerEvents =
+          // 'none' while open and only re-enables it on DialogContent's own
+          // node — this panel is portaled straight to <body> (a sibling of
+          // DialogContent, not a descendant), so without this override it
+          // silently inherits pointer-events: none and every click on an
+          // option is swallowed before it ever reaches our onClick handlers.
+          style={{ position: 'fixed', top: rect.top, left: rect.left, width: rect.width, pointerEvents: 'auto' }}
           className="z-[60] overflow-hidden rounded-lg border border-border bg-card shadow-xl animate-fade-in"
         >
-          {options.length > 0 ? (
+          {uniqueOptions.length > 0 ? (
             <div className="max-h-48 overflow-y-auto p-1">
-              {options.map((opt) => (
+              {uniqueOptions.map((opt) => (
                 <div
                   key={opt.id}
                   className="group flex items-center justify-between rounded-md py-2 pl-2.5 pr-1.5 text-sm hover:bg-secondary"

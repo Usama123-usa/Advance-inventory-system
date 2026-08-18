@@ -1,6 +1,7 @@
 const { supabase } = require('../config/supabase');
 const asyncHandler = require('../utils/asyncHandler');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
+const { withSupabaseRetry } = require('../utils/withSupabaseRetry');
 
 const formatSummaryRow = (row) => ({
   totalProducts: row.total_products,
@@ -26,15 +27,17 @@ const getDashboard = asyncHandler(async (req, res) => {
   const { days = 14, recentLimit = 6, bestSellingLimit = 5 } = req.query;
 
   const [summaryResult, recentSalesResult, bestSellingResult, salesTrendResult] = await Promise.all([
-    supabase.rpc('get_store_dashboard', { p_store_id: req.storeId }),
-    supabase
-      .from('sales')
-      .select('id, invoice_number, grand_total, payment_method, created_at, customers(name)')
-      .eq('store_id', req.storeId)
-      .order('created_at', { ascending: false })
-      .limit(Number(recentLimit)),
-    supabase.rpc('get_best_selling', { p_store_id: req.storeId, p_limit: Number(bestSellingLimit) }),
-    supabase.rpc('get_sales_trend', { p_store_id: req.storeId, p_days: Number(days) }),
+    withSupabaseRetry(() => supabase.rpc('get_store_dashboard', { p_store_id: req.storeId })),
+    withSupabaseRetry(() =>
+      supabase
+        .from('sales')
+        .select('id, invoice_number, grand_total, payment_method, created_at, customers(name)')
+        .eq('store_id', req.storeId)
+        .order('created_at', { ascending: false })
+        .limit(Number(recentLimit))
+    ),
+    withSupabaseRetry(() => supabase.rpc('get_best_selling', { p_store_id: req.storeId, p_limit: Number(bestSellingLimit) })),
+    withSupabaseRetry(() => supabase.rpc('get_sales_trend', { p_store_id: req.storeId, p_days: Number(days) })),
   ]);
 
   assertNoSupabaseError(summaryResult.error, 'Failed to load dashboard summary');

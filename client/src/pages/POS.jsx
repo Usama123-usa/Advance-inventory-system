@@ -85,9 +85,18 @@ export default function POS() {
         }
         return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
       }
-      // Price is never pulled from the product catalog — the cashier types
-      // it in for every cart line, and that typed price is what gets billed.
-      return [...prev, { ...product, qty: 1, price: '' }];
+      // Pricing is still cashier-editable at sale time (create_sale() always
+      // bills the typed unitPrice, never the catalog price), but the field
+      // should start from the product's actual price instead of blank/0 —
+      // tiles price from sqr_meter x rate_per_meter, everything else from
+      // the stored selling_price when one is set.
+      const defaultPrice =
+        product.product_type === 'tiles' && product.sqr_meter && product.rate_per_meter
+          ? Number(product.sqr_meter) * Number(product.rate_per_meter)
+          : Number(product.selling_price) > 0
+            ? Number(product.selling_price)
+            : '';
+      return [...prev, { ...product, qty: 1, price: defaultPrice === '' ? '' : String(defaultPrice) }];
     });
   }, []);
 
@@ -121,6 +130,21 @@ export default function POS() {
 
   const increaseQty = useCallback((productId) => updateQty(productId, 1), [updateQty]);
   const decreaseQty = useCallback((productId) => updateQty(productId, -1), [updateQty]);
+
+  // Manual qty entry — always receives a clean positive integer (the input
+  // itself buffers in-progress typing locally), clamped to available stock.
+  const setQtyDirect = useCallback((productId, qty) => {
+    setCart((prev) =>
+      prev.map((i) => {
+        if (i.id !== productId) return i;
+        if (qty > i.quantity) {
+          toast.error('No more stock available');
+          return { ...i, qty: i.quantity };
+        }
+        return { ...i, qty };
+      })
+    );
+  }, []);
 
   const updatePrice = useCallback((productId, value) => {
     setCart((prev) => prev.map((i) => (i.id === productId ? { ...i, price: value } : i)));
@@ -288,6 +312,7 @@ export default function POS() {
                 currency={currency}
                 onIncrease={increaseQty}
                 onDecrease={decreaseQty}
+                onQtyChange={setQtyDirect}
                 onRemove={removeFromCart}
                 onPriceChange={updatePrice}
               />
