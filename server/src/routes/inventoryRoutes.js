@@ -12,6 +12,7 @@ router.use(resolveStore);
 router.get('/current', inventoryController.getCurrentStock);
 router.get('/low-stock', inventoryController.getLowStock);
 router.get('/history', inventoryController.getHistory);
+router.get('/stock-returns', inventoryController.getStockReturns);
 
 router.post(
   '/stock-in',
@@ -25,6 +26,17 @@ router.post(
   [body('productId').isUUID().withMessage('Valid productId is required'), body('quantity').isFloat({ gt: 0 })],
   validate,
   inventoryController.stockOut
+);
+
+router.post(
+  '/stock-return',
+  [
+    body('items').isArray({ min: 1 }).withMessage('Select at least one product to return'),
+    body('items.*.productId').isUUID().withMessage('Valid productId is required for every item'),
+    body('items.*.quantity').isFloat({ gt: 0 }).withMessage('Quantity must be greater than 0 for every item'),
+  ],
+  validate,
+  inventoryController.createStockReturn
 );
 
 module.exports = router;

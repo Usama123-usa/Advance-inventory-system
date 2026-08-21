@@ -11,11 +11,12 @@ router.use(resolveStore);
 
 router.get('/', expenseController.getExpenses);
 router.get('/summary', expenseController.getExpenseSummary);
+router.get('/categories', expenseController.getExpenseCategories);
 
 router.post(
   '/',
   [
-    body('category').isIn(['food', 'transport', 'utilities', 'salaries', 'other']).withMessage('Invalid category'),
+    body('categoryIds').isArray({ min: 1 }).withMessage('Select at least one expense category'),
     body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number'),
   ],
   validate,
@@ -25,7 +26,7 @@ router.post(
 router.put(
   '/:id',
   [
-    body('category').optional().isIn(['food', 'transport', 'utilities', 'salaries', 'other']),
+    body('categoryIds').optional().isArray({ min: 1 }).withMessage('Select at least one expense category'),
     body('amount').optional().isFloat({ min: 0 }),
   ],
   validate,

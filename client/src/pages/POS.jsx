@@ -9,10 +9,11 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select';
+import { Table, TableHeader, TableBody, TableRow, TableHead } from '@/components/ui/Table';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Pagination } from '@/components/ui/Pagination';
-import { ProductCard } from '@/components/pos/ProductCard';
+import { ProductRow } from '@/components/pos/ProductRow';
 import { CartItemRow } from '@/components/pos/CartItemRow';
 import { formatCurrency, cn } from '@/lib/utils';
 
@@ -80,23 +81,16 @@ export default function POS() {
       const existing = prev.find((i) => i.id === product.id);
       if (existing) {
         if (existing.qty >= product.quantity) {
-          toast.error('No more stock available for this product');
+          toast.error('No more stock available for this product', { id: 'stock-limit' });
           return prev;
         }
         return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + 1 } : i));
       }
-      // Pricing is still cashier-editable at sale time (create_sale() always
-      // bills the typed unitPrice, never the catalog price), but the field
-      // should start from the product's actual price instead of blank/0 —
-      // tiles price from sqr_meter x rate_per_meter, everything else from
-      // the stored selling_price when one is set.
-      const defaultPrice =
-        product.product_type === 'tiles' && product.sqr_meter && product.rate_per_meter
-          ? Number(product.sqr_meter) * Number(product.rate_per_meter)
-          : Number(product.selling_price) > 0
-            ? Number(product.selling_price)
-            : '';
-      return [...prev, { ...product, qty: 1, price: defaultPrice === '' ? '' : String(defaultPrice) }];
+      // Pricing is always cashier-typed at sale time (create_sale() only ever
+      // bills the manually entered unitPrice, never the catalog price) — the
+      // field starts blank so the cashier enters it themselves, with no
+      // auto-filled/suggested value.
+      return [...prev, { ...product, qty: 1, price: '' }];
     });
   }, []);
 
@@ -119,7 +113,7 @@ export default function POS() {
           if (i.id !== productId) return i;
           const newQty = i.qty + delta;
           if (newQty > i.quantity) {
-            toast.error('No more stock available');
+            toast.error('No more stock available', { id: 'stock-limit' });
             return i;
           }
           return { ...i, qty: newQty };
@@ -138,7 +132,7 @@ export default function POS() {
       prev.map((i) => {
         if (i.id !== productId) return i;
         if (qty > i.quantity) {
-          toast.error('No more stock available');
+          toast.error('No more stock available', { id: 'stock-limit' });
           return { ...i, qty: i.quantity };
         }
         return { ...i, qty };
@@ -254,18 +248,27 @@ export default function POS() {
 
         <Card className="p-4">
           {loadingProducts ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56" />)}
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
             </div>
           ) : products.length === 0 ? (
             <EmptyState title="No products found" description="Try a different search term." />
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {products.map((p) => (
-                  <ProductCard key={p.id} product={p} currency={currency} onClick={addToCart} />
-                ))}
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead className="text-right">Select</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {products.map((p) => (
+                    <ProductRow key={p.id} product={p} onClick={addToCart} />
+                  ))}
+                </TableBody>
+              </Table>
               <Pagination page={page} totalPages={pagination.totalPages} total={pagination.total} onPageChange={setPage} />
             </>
           )}

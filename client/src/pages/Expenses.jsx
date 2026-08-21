@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select';
+import { MultiSelect } from '@/components/ui/MultiSelect';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -20,23 +21,16 @@ import { Badge } from '@/components/ui/Badge';
 import { StatCard } from '@/components/ui/StatCard';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-const CATEGORIES = [
-  { value: 'food', label: 'Food' },
-  { value: 'transport', label: 'Transport' },
-  { value: 'utilities', label: 'Utilities' },
-  { value: 'salaries', label: 'Salaries' },
-  { value: 'other', label: 'Other' },
-];
-
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-const emptyForm = { date: todayIso(), category: 'other', description: '', amount: '' };
+const emptyForm = { date: todayIso(), categoryIds: [], description: '', amount: '' };
 
 export default function Expenses() {
   const { settings } = useSettings();
   const currency = settings?.currency || 'PKR';
 
   const [expenses, setExpenses] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -55,6 +49,10 @@ export default function Expenses() {
 
   const fetchSummary = useCallback(() => {
     api.get('/expenses/summary').then(({ data }) => setSummary(data.data)).catch(() => {});
+  }, []);
+
+  const fetchCategories = useCallback(() => {
+    api.get('/expenses/categories').then(({ data }) => setCategories(data.data)).catch(() => {});
   }, []);
 
   const fetchExpenses = useCallback(async () => {
@@ -79,6 +77,7 @@ export default function Expenses() {
 
   useEffect(() => { fetchExpenses(); }, [fetchExpenses]);
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
   useEffect(() => setPage(1), [debouncedSearch, categoryFilter]);
 
   const openCreate = () => {
@@ -91,7 +90,7 @@ export default function Expenses() {
     setEditing(expense);
     setForm({
       date: expense.date,
-      category: expense.category,
+      categoryIds: (expense.categories || []).map((c) => c.id),
       description: expense.description || '',
       amount: String(expense.amount),
     });
@@ -100,6 +99,10 @@ export default function Expenses() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.categoryIds.length === 0) {
+      toast.error('Select at least one expense category');
+      return;
+    }
     setSaving(true);
     try {
       if (editing) {
@@ -134,7 +137,7 @@ export default function Expenses() {
     }
   };
 
-  const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value;
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name }));
 
   return (
     <div className="space-y-6">
@@ -162,8 +165,8 @@ export default function Expenses() {
             <SelectTrigger className="w-40"><SelectValue placeholder="Category" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -192,7 +195,17 @@ export default function Expenses() {
                 {expenses.map((exp) => (
                   <TableRow key={exp.id}>
                     <TableCell className="text-muted-foreground">{formatDate(exp.date)}</TableCell>
-                    <TableCell><Badge variant="secondary" className="capitalize">{categoryLabel(exp.category)}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(exp.categories || []).length === 0 ? (
+                          '—'
+                        ) : (
+                          exp.categories.map((c) => (
+                            <Badge key={c.id} variant="secondary">{c.name}</Badge>
+                          ))
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="max-w-xs truncate">{exp.description || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{exp.created_by_name || '—'}</TableCell>
                     <TableCell className="font-medium text-rose">{formatCurrency(exp.amount, currency)}</TableCell>
@@ -225,15 +238,13 @@ export default function Expenses() {
                 <Input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label>Category</Label>
-                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Categories</Label>
+                <MultiSelect
+                  options={categoryOptions}
+                  value={form.categoryIds}
+                  onChange={(ids) => setForm({ ...form, categoryIds: ids })}
+                  placeholder="Select categories"
+                />
               </div>
             </div>
             <div className="space-y-1.5">

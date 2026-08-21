@@ -3,7 +3,26 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 
-const CATEGORIES = ['food', 'transport', 'utilities', 'salaries', 'other'];
+const flattenExpenseRow = (row) => {
+  const { users, expense_category_links, ...rest } = row;
+  return {
+    ...rest,
+    created_by_name: users?.name || null,
+    categories: (expense_category_links || []).map((link) => link.expense_categories).filter(Boolean),
+  };
+};
+
+// GET /api/expenses/categories -- feeds the multi-select in the add/edit form
+const getExpenseCategories = asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('expense_categories')
+    .select('id, name')
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+
+  assertNoSupabaseError(error, 'Failed to load expense categories');
+  res.json({ success: true, data });
+});
 
 // GET /api/expenses?search=&category=&from=&to=&page=&limit=
 const getExpenses = asyncHandler(async (req, res) => {
@@ -13,24 +32,35 @@ const getExpenses = asyncHandler(async (req, res) => {
 
   let queryBuilder = supabase
     .from('expenses')
-    .select('id, date, category, description, amount, users(name)', { count: 'exact' })
+    .select('id, date, description, amount, users(name), expense_category_links(expense_categories(id, name))', { count: 'exact' })
     .eq('store_id', req.storeId)
     .order('date', { ascending: false })
     .range(rangeFrom, rangeTo);
 
   if (search) queryBuilder = queryBuilder.ilike('description', `%${search}%`);
-  if (category) queryBuilder = queryBuilder.eq('category', category);
   if (from) queryBuilder = queryBuilder.gte('date', from);
   if (to) queryBuilder = queryBuilder.lte('date', to);
+
+  if (category) {
+    const { data: linkedIds, error: linkError } = await supabase
+      .from('expense_category_links')
+      .select('expense_id')
+      .eq('category_id', category);
+    assertNoSupabaseError(linkError, 'Failed to filter expenses by category');
+
+    const expenseIds = (linkedIds || []).map((row) => row.expense_id);
+    if (expenseIds.length === 0) {
+      return res.json({ success: true, data: [], pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 } });
+    }
+    queryBuilder = queryBuilder.in('id', expenseIds);
+  }
 
   const { data, error, count } = await queryBuilder;
   assertNoSupabaseError(error, 'Failed to load expenses');
 
-  const rows = data.map(({ users, ...rest }) => ({ ...rest, created_by_name: users?.name || null }));
-
   res.json({
     success: true,
-    data: rows,
+    data: data.map(flattenExpenseRow),
     pagination: {
       total: count || 0,
       page: Number(page),
@@ -61,36 +91,48 @@ const getExpenseSummary = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/expenses  { date, category, description, amount }
-const createExpense = asyncHandler(async (req, res) => {
-  const { date, category, description, amount } = req.body;
-  if (!CATEGORIES.includes(category)) throw new ApiError(400, 'Invalid expense category');
+const normalizeCategoryIds = (categoryIds) =>
+  Array.isArray(categoryIds) ? [...new Set(categoryIds.filter(Boolean))] : [];
 
-  const { data, error } = await supabase
+// POST /api/expenses  { date, categoryIds, description, amount }
+const createExpense = asyncHandler(async (req, res) => {
+  const { date, categoryIds, description, amount } = req.body;
+  const ids = normalizeCategoryIds(categoryIds);
+  if (ids.length === 0) throw new ApiError(400, 'Select at least one expense category');
+
+  const { data: expense, error } = await supabase
     .from('expenses')
     .insert({
       store_id: req.storeId,
       date: date || new Date().toISOString().slice(0, 10),
-      category,
       description: description || null,
       amount: Number(amount) || 0,
       created_by: req.user.id,
     })
-    .select('*')
+    .select('id, date, description, amount')
     .single();
 
   assertNoSupabaseError(error, 'Failed to create expense');
-  res.status(201).json({ success: true, data });
+
+  const { error: linkError } = await supabase.rpc('save_expense_categories', {
+    p_expense_id: expense.id,
+    p_category_ids: ids,
+  });
+
+  if (linkError) {
+    await supabase.from('expenses').delete().eq('id', expense.id);
+    assertNoSupabaseError(linkError, 'Failed to save expense categories');
+  }
+
+  res.status(201).json({ success: true, data: { ...expense, category_ids: ids } });
 });
 
 // PUT /api/expenses/:id
 const updateExpense = asyncHandler(async (req, res) => {
-  const { date, category, description, amount } = req.body;
-  if (category && !CATEGORIES.includes(category)) throw new ApiError(400, 'Invalid expense category');
+  const { date, categoryIds, description, amount } = req.body;
 
   const updatePayload = {};
   if (date !== undefined) updatePayload.date = date;
-  if (category !== undefined) updatePayload.category = category;
   if (description !== undefined) updatePayload.description = description || null;
   if (amount !== undefined) updatePayload.amount = Number(amount) || 0;
 
@@ -99,11 +141,23 @@ const updateExpense = asyncHandler(async (req, res) => {
     .update(updatePayload)
     .eq('id', req.params.id)
     .eq('store_id', req.storeId)
-    .select('*')
+    .select('id, date, description, amount')
     .maybeSingle();
 
   assertNoSupabaseError(error, 'Failed to update expense');
   if (!data) throw new ApiError(404, 'Expense not found');
+
+  if (categoryIds !== undefined) {
+    const ids = normalizeCategoryIds(categoryIds);
+    if (ids.length === 0) throw new ApiError(400, 'Select at least one expense category');
+
+    const { error: linkError } = await supabase.rpc('save_expense_categories', {
+      p_expense_id: data.id,
+      p_category_ids: ids,
+    });
+    assertNoSupabaseError(linkError, 'Failed to save expense categories');
+  }
+
   res.json({ success: true, data });
 });
 
@@ -122,4 +176,11 @@ const deleteExpense = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Expense deleted successfully' });
 });
 
-module.exports = { getExpenses, getExpenseSummary, createExpense, updateExpense, deleteExpense };
+module.exports = {
+  getExpenses,
+  getExpenseSummary,
+  getExpenseCategories,
+  createExpense,
+  updateExpense,
+  deleteExpense,
+};

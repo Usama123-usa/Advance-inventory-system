@@ -33,6 +33,16 @@ const TILE_OPTION_FIELDS = [
 
 const emptyTileOptions = { size: [], glaze_mate: [], sqr_meter: [], packing_per_box: [], rate_per_meter: [] };
 
+const UNIT_OPTIONS = [
+  { value: 'kg', label: 'Kg' },
+  { value: 'gram', label: 'Gram' },
+  { value: 'liter', label: 'Liter' },
+  { value: 'piece', label: 'Piece' },
+  { value: 'box', label: 'Box' },
+  { value: 'dozen', label: 'Dozen' },
+  { value: 'pcs', label: 'Pcs' },
+];
+
 const emptyForm = {
   name: '',
   categoryId: '',
@@ -51,7 +61,7 @@ const emptyForm = {
   // Other form
   article: '',
   company: '',
-  unitType: 'box',
+  unit: 'Pcs',
 };
 
 // Memoized row — with stable onEdit/onDeleteRequest callbacks from the
@@ -231,7 +241,7 @@ export default function Products() {
       ratePerMeter: product.rate_per_meter != null ? String(product.rate_per_meter) : '',
       article: product.article || '',
       company: product.company || '',
-      unitType: product.unit_type || 'box',
+      unit: product.unit || 'pcs',
     });
     setDialogOpen(true);
   }, []);
@@ -448,12 +458,13 @@ export default function Products() {
                       <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Unit Type</Label>
-                      <Select value={form.unitType} onValueChange={(v) => setForm({ ...form, unitType: v })}>
+                      <Label>Unit</Label>
+                      <Select value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="box">Box</SelectItem>
-                          <SelectItem value="pcs">PCS</SelectItem>
+                          {UNIT_OPTIONS.map((u) => (
+                            <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

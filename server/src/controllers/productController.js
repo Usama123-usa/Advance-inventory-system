@@ -111,10 +111,12 @@ const buildProductPayload = (body) => {
     // saved on sale_items instead. This column is kept (defaulted to 0) so
     // existing rows and reports referencing it don't break.
     selling_price: Number(body.sellingPrice) || 0,
-    // Tiles/Other forms don't expose a raw "unit" input — derive a sensible
-    // one so existing "{quantity} {unit}" displays (Products table, POS
-    // cart) keep working. Legacy callers can still pass body.unit directly.
-    unit: isTiles ? 'box' : isOther ? (body.unitType === 'pcs' ? 'pcs' : 'box') : body.unit?.trim() || 'pcs',
+    // Tiles keep a fixed 'box' unit (sqr-meter/rate-per-meter pricing is
+    // built around it). Everything else uses the Unit field from the form
+    // (Kg/Gram/Liter/Piece/Box/Dozen/Pcs/...) when provided, falling back to
+    // the legacy box/pcs unitType toggle for any older caller that still
+    // only sends that.
+    unit: isTiles ? 'box' : body.unit?.trim() || (isOther && body.unitType === 'pcs' ? 'pcs' : isOther ? 'box' : 'pcs'),
     description: body.description || null,
     status: body.status || 'active',
     product_type: productType,
@@ -125,7 +127,12 @@ const buildProductPayload = (body) => {
     rate_per_meter: ratePerMeter,
     article: isOther ? body.article?.trim() || null : null,
     company: isOther ? body.company?.trim() || null : null,
-    unit_type: isOther && (body.unitType === 'box' || body.unitType === 'pcs') ? body.unitType : null,
+    // unit_type is no longer form-editable directly — kept populated as a
+    // derived box/pcs flag purely for backward compatibility with anything
+    // still reading it.
+    unit_type: isOther
+      ? (body.unit?.trim().toLowerCase() === 'pcs' || body.unitType === 'pcs' ? 'pcs' : 'box')
+      : null,
   };
 };
 

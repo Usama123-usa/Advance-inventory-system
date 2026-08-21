@@ -11,9 +11,6 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
   const subtitle = isTiles
     ? [item.size, item.glaze_grade].filter(Boolean).join(' · ')
     : [item.company, item.article].filter(Boolean).join(' · ');
-  const suggestedPrice = isTiles && item.sqr_meter && item.rate_per_meter
-    ? Number(item.sqr_meter) * Number(item.rate_per_meter)
-    : null;
   const lineTotal = (Number(item.price) || 0) * item.qty;
 
   // Buffers in-progress typing locally so the field can be cleared/retyped
@@ -44,10 +41,6 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
       <div className="min-w-0">
         <p className="truncate text-base font-medium">{item.name}</p>
         {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
-        <p className="truncate text-xs text-muted-foreground">per {item.unit}</p>
-        {suggestedPrice != null && (
-          <p className="text-xs text-muted-foreground">Suggested: {formatCurrency(suggestedPrice, currency)}</p>
-        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4">

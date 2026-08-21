@@ -169,4 +169,81 @@ async function adjustStock({ storeId, productId, delta, changeType, reason, user
   return data;
 }
 
-module.exports = { getCurrentStock, getLowStock, getHistory, stockIn, stockOut, adjustStock };
+// GET /api/inventory/stock-returns?page=&limit=
+const getStockReturns = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 20 } = req.query;
+  const from = (Number(page) - 1) * Number(limit);
+  const to = from + Number(limit) - 1;
+
+  const { data, error, count } = await supabase
+    .from('stock_returns')
+    .select('id, reason, created_at, users(name), stock_return_items(quantity, unit, products(name))', { count: 'exact' })
+    .eq('store_id', req.storeId)
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  assertNoSupabaseError(error, 'Failed to load stock returns');
+
+  const rows = data.map((row) => {
+    const { users, stock_return_items, ...rest } = row;
+    return {
+      ...rest,
+      created_by_name: users?.name || null,
+      items: (stock_return_items || []).map((item) => ({
+        quantity: item.quantity,
+        unit: item.unit,
+        product_name: item.products?.name || null,
+      })),
+    };
+  });
+
+  res.json({
+    success: true,
+    data: rows,
+    pagination: {
+      total: count || 0,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil((count || 0) / Number(limit)),
+    },
+  });
+});
+
+// POST /api/inventory/stock-return  { reason, items: [{ productId, quantity }] }
+const createStockReturn = asyncHandler(async (req, res) => {
+  const { reason, items } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new ApiError(400, 'Select at least one product to return');
+  }
+
+  const normalizedItems = items.map((item) => ({
+    productId: item.productId,
+    quantity: Number(item.quantity),
+  }));
+
+  if (normalizedItems.some((item) => !item.productId || !item.quantity || item.quantity <= 0)) {
+    throw new ApiError(400, 'Every returned product needs a valid quantity greater than 0');
+  }
+
+  const { data, error } = await supabase.rpc('create_stock_return', {
+    p_store_id: req.storeId,
+    p_reason: reason || null,
+    p_items: normalizedItems,
+    p_user_id: req.user.id,
+  });
+
+  assertNoSupabaseError(error, 'Failed to save stock return');
+  res.status(201).json({ success: true, data: { id: data } });
+});
+
+module.exports = {
+  getCurrentStock,
+  getLowStock,
+  getHistory,
+  stockIn,
+  stockOut,
+  adjustStock,
+  getStockReturns,
+  createStockReturn,
+};

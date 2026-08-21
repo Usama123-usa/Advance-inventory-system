@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Search, ArrowUpCircle, ArrowDownCircle, AlertTriangle, History, Boxes } from 'lucide-react';
+import { Search, ArrowUpCircle, ArrowDownCircle, AlertTriangle, History, Boxes, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -15,6 +15,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
+import { StockReturnDialog } from '@/components/inventory/StockReturnDialog';
 import { formatDateTime } from '@/lib/utils';
 
 export default function Inventory() {
@@ -34,6 +35,7 @@ export default function Inventory() {
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
 
   const fetchCurrent = useCallback(async () => {
     setLoading(true);
@@ -114,7 +116,15 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Inventory" description="Track stock levels and movements" />
+      <PageHeader
+        title="Inventory"
+        description="Track stock levels and movements"
+        actions={
+          <Button variant="outline" onClick={() => setReturnDialogOpen(true)}>
+            <Undo2 className="h-4 w-4" /> Stock Return
+          </Button>
+        }
+      />
 
       <div className="flex gap-1 rounded-lg border border-border bg-secondary/50 p-1 w-fit">
         {TABS.map((t) => (
@@ -298,6 +308,16 @@ export default function Inventory() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <StockReturnDialog
+        open={returnDialogOpen}
+        onOpenChange={setReturnDialogOpen}
+        onSuccess={() => {
+          fetchCurrent();
+          fetchLowStock();
+          if (tab === 'history') fetchHistory();
+        }}
+      />
     </div>
   );
 }
