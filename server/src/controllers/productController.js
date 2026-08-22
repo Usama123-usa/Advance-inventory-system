@@ -137,55 +137,55 @@ const buildProductPayload = (body) => {
 };
 
 // POST /api/products  (admin or store_manager)
-// Admins: creates the global product, plus a store_products row for the
-// Main Store and any storeIds selected via the "Add to which stores?"
-// multi-select. Selected sub-stores start at zero stock; only the Main
-// Store gets the entered initial quantity.
-// Store managers: creates the global product, plus a single store_products
-// row for their own store (req.storeId) at the entered initial quantity —
-// storeIds from the request body is ignored, they can never stock Main
-// Store or any other sub-store.
+// Which stores a new product lands in depends entirely on the store the
+// caller is currently acting in (req.storeId) — never on their role:
+//   - Created while viewing the Main Store: fans out to every active store
+//     (Main + every sub-store) automatically, at zero stock everywhere
+//     except the Main Store (which gets the entered initial quantity).
+//   - Created while viewing a sub-store (a store_manager's own store, or an
+//     admin who has switched their view to a sub-store): stays in that one
+//     store only, at the entered initial quantity.
+// A store_manager's store_id can never be the Main Store's (sub-stores are
+// only ever created via create_sub_store()), so this same check naturally
+// keeps them scoped to their own store without a separate role branch.
 const createProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
   const initialStock = Math.max(0, Number(req.body.quantity) || 0);
   const lowStockThreshold = Math.max(0, Number(req.body.lowStockThreshold) || 5);
-  const isAdmin = req.user.role === 'admin';
+
+  const { data: currentStore, error: storeError } = await supabase
+    .from('stores')
+    .select('id, is_main')
+    .eq('id', req.storeId)
+    .maybeSingle();
+
+  assertNoSupabaseError(storeError, 'Failed to resolve current store');
+  if (!currentStore) throw new ApiError(404, 'Store not found');
 
   const { data: product, error } = await supabase.from('products').insert(payload).select('*').single();
   assertNoSupabaseError(error, 'Failed to create product');
 
   let storeProductRows;
-  let stockLogStoreId;
 
-  if (isAdmin) {
-    const { data: mainStore, error: mainStoreError } = await supabase
-      .from('stores')
-      .select('id')
-      .eq('is_main', true)
-      .maybeSingle();
+  if (currentStore.is_main) {
+    const { data: allStores, error: allStoresError } = await supabase.from('stores').select('id').eq('is_active', true);
+    assertNoSupabaseError(allStoresError, 'Failed to load stores');
 
-    assertNoSupabaseError(mainStoreError, 'Failed to resolve Main Store');
-    if (!mainStore) throw new ApiError(500, 'Main Store is not configured');
-
-    const storeIds = Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
-    const targetStoreIds = Array.from(new Set([mainStore.id, ...storeIds]));
-    storeProductRows = targetStoreIds.map((storeId) => ({
-      store_id: storeId,
+    storeProductRows = allStores.map((s) => ({
+      store_id: s.id,
       product_id: product.id,
-      stock: storeId === mainStore.id ? initialStock : 0,
+      stock: s.id === currentStore.id ? initialStock : 0,
       low_stock_threshold: lowStockThreshold,
     }));
-    stockLogStoreId = mainStore.id;
   } else {
     storeProductRows = [
       {
-        store_id: req.storeId,
+        store_id: currentStore.id,
         product_id: product.id,
         stock: initialStock,
         low_stock_threshold: lowStockThreshold,
       },
     ];
-    stockLogStoreId = req.storeId;
   }
 
   const { error: spError } = await supabase.from('store_products').insert(storeProductRows);
@@ -193,7 +193,7 @@ const createProduct = asyncHandler(async (req, res) => {
 
   if (initialStock > 0) {
     await supabase.from('inventory_logs').insert({
-      store_id: stockLogStoreId,
+      store_id: currentStore.id,
       product_id: product.id,
       change_type: 'in',
       quantity: initialStock,

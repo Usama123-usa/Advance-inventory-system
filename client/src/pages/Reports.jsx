@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FileDown, FileSpreadsheet, BarChart3, Eye } from 'lucide-react';
+import { FileDown, FileSpreadsheet, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useSettings } from '@/context/SettingsContext';
@@ -18,8 +17,8 @@ import { exportReportToPdf, exportReportToExcel, exportMultiSectionPdf, exportMu
 
 const REPORT_TABS = [
   { id: 'sales', label: 'Sales Report' },
-  { id: 'top-products', label: 'Top Selling Products' },
-  { id: 'stock', label: 'Stock Report' },
+  { id: 'expenses', label: 'Expense Report' },
+  { id: 'pending-payments', label: 'Pending Payment Report' },
   { id: 'profit', label: 'Profit Report' },
 ];
 
@@ -62,7 +61,6 @@ const PERIOD_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', cus
 export default function Reports() {
   const { settings } = useSettings();
   const { isAdmin } = useAuth();
-  const navigate = useNavigate();
   const currency = settings?.currency || 'PKR';
 
   const tabs = isAdmin ? [...REPORT_TABS, { id: 'all-stores', label: 'All Stores' }] : REPORT_TABS;
@@ -157,23 +155,16 @@ export default function Reports() {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const isCustomRange = period === 'custom';
-  // top-products keeps its original custom-range-only behavior.
-  const customRangeApplies = ['top-products'].includes(tab);
-  const dateRangeParams = isCustomRange && customRangeApplies && customStart && customEnd
-    ? { from: customStart, to: `${customEnd}T23:59:59` }
-    : {};
-
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
       let data;
-      if (tab === 'top-products') {
-        ({ data } = await api.get('/reports/top-products', { params: { limit: 20, ...dateRangeParams } }));
-      } else if (tab === 'stock') {
-        ({ data } = await api.get('/reports/stock'));
+      if (tab === 'expenses') {
+        ({ data } = await api.get('/reports/expenses'));
+      } else if (tab === 'pending-payments') {
+        ({ data } = await api.get('/reports/pending-payments'));
       } else if (tab === 'all-stores') {
-        ({ data } = await api.get('/reports/all-stores', { params: dateRangeParams }));
+        ({ data } = await api.get('/reports/all-stores'));
       } else {
         return;
       }
@@ -184,26 +175,40 @@ export default function Reports() {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, customStart, customEnd]);
+  }, [tab]);
 
   useEffect(() => {
     if (tab !== 'sales' && tab !== 'profit') fetchReport();
   }, [tab, fetchReport]);
 
   const getExportData = () => {
-    if (tab === 'top-products') {
+    if (tab === 'expenses') {
       return {
-        title: 'Top Selling Products',
-        columns: ['Product', 'SKU', 'Units Sold', 'Revenue'],
-        rows: rows.map((r) => [r.product_name, r.sku || '—', r.units_sold, r.revenue]),
+        title: 'Expense Report',
+        columns: ['Date', 'Category', 'Description', 'Added By', 'Amount'],
+        rows: rows.map((r) => [
+          formatDate(r.date),
+          (r.categories || []).map((c) => `${c.name} (${formatCurrency(c.amount, currency)})`).join(', ') || '—',
+          r.description || '—',
+          r.created_by_name || '—',
+          formatCurrency(r.amount, currency),
+        ]),
       };
     }
-    if (tab === 'stock') {
+    if (tab === 'pending-payments') {
       return {
-        title: 'Stock Report',
-        columns: ['Product', 'SKU', 'Category', 'Quantity', 'Unit', 'Purchase Price', 'Selling Price', 'Stock Value'],
-        rows: rows.map((r) => [r.name, r.sku || '—', r.category_name || '—', r.quantity, r.unit, r.purchase_price, r.selling_price, r.stock_value]),
+        title: 'Pending Payment Report',
+        columns: ['Invoice', 'Date', 'Customer', 'Method', 'Status', 'Total', 'Paid', 'Pending'],
+        rows: rows.map((r) => [
+          r.invoice_number,
+          formatDateTime(r.created_at),
+          r.customer_name || 'Walk-in Customer',
+          r.payment_method,
+          r.payment_status,
+          formatCurrency(r.grand_total, currency),
+          formatCurrency(r.paid_amount, currency),
+          formatCurrency(r.remaining_balance, currency),
+        ]),
       };
     }
     // tab === 'all-stores' (the only remaining case — 'sales'/'profit' use
@@ -354,7 +359,7 @@ export default function Reports() {
         description={
           (tab === 'sales' || tab === 'profit') && salesRange
             ? `${PERIOD_LABEL[period]} Report — ${salesRange.label}`
-            : 'Analyze sales, stock, and profitability'
+            : 'Analyze sales, expenses, pending payments, and profitability'
         }
         actions={
           <>
@@ -468,11 +473,18 @@ export default function Reports() {
         </div>
       )}
 
-      {meta && tab === 'stock' && (
-        <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Total Stock Value</p>
-          <p className="font-display text-xl font-bold text-purple">{formatCurrency(meta.totalStockValue, currency)}</p>
-        </Card>
+      {meta && tab === 'expenses' && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Expenses</p><p className="font-display text-xl font-bold text-rose">{formatCurrency(meta.totalExpenses, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Entries</p><p className="font-display text-xl font-bold text-primary">{meta.totalEntries}</p></Card>
+        </div>
+      )}
+
+      {meta && tab === 'pending-payments' && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Pending Amount</p><p className="font-display text-xl font-bold text-rose">{formatCurrency(meta.totalPending, currency)}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Pending Invoices</p><p className="font-display text-xl font-bold text-primary">{meta.totalInvoices}</p></Card>
+        </div>
       )}
 
       {meta && tab === 'all-stores' && (
@@ -528,7 +540,6 @@ export default function Reports() {
                     <TableHead>Method</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Total</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -544,11 +555,6 @@ export default function Reports() {
                         </Badge>
                       </TableCell>
                       <TableCell className="font-semibold text-primary">{formatCurrency(s.grand_total, currency)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => navigate(`/invoice/${s.id}`)} title="View invoice">
-                          <Eye className="h-4 w-4 text-purple" />
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -600,7 +606,6 @@ export default function Reports() {
                     <TableHead>Method</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Total</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -616,11 +621,6 @@ export default function Reports() {
                         </Badge>
                       </TableCell>
                       <TableCell className="font-semibold text-primary">{formatCurrency(s.grand_total, currency)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => navigate(`/invoice/${s.id}`)} title="View invoice">
-                          <Eye className="h-4 w-4 text-purple" />
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -634,41 +634,54 @@ export default function Reports() {
             <TableSkeleton rows={6} cols={5} />
           ) : rows.length === 0 ? (
             <EmptyState icon={BarChart3} title="No data available" description="Try a different period or check back after making some sales." />
-          ) : tab === 'top-products' ? (
+          ) : tab === 'expenses' ? (
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Product</TableHead><TableHead>SKU</TableHead><TableHead>Units Sold</TableHead><TableHead>Revenue</TableHead></TableRow>
+                <TableRow>
+                  <TableHead>Date</TableHead><TableHead>Category</TableHead><TableHead>Description</TableHead>
+                  <TableHead>Added By</TableHead><TableHead>Amount</TableHead>
+                </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{r.product_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.sku || '—'}</TableCell>
-                    <TableCell><Badge variant="purple">{r.units_sold}</Badge></TableCell>
-                    <TableCell className="font-semibold text-success">{formatCurrency(r.revenue, currency)}</TableCell>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="text-muted-foreground">{formatDate(r.date)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(r.categories || []).length === 0
+                          ? '—'
+                          : r.categories.map((c) => <Badge key={c.id} variant="secondary">{c.name} ({formatCurrency(c.amount, currency)})</Badge>)}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">{r.description || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.created_by_name || '—'}</TableCell>
+                    <TableCell className="font-semibold text-rose">{formatCurrency(r.amount, currency)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          ) : tab === 'stock' ? (
+          ) : tab === 'pending-payments' ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Product</TableHead><TableHead>Category</TableHead><TableHead>Quantity</TableHead>
-                  <TableHead>Purchase Price</TableHead><TableHead>Selling Price</TableHead><TableHead>Stock Value</TableHead>
+                  <TableHead>Invoice</TableHead><TableHead>Date &amp; Time</TableHead><TableHead>Customer</TableHead>
+                  <TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Total</TableHead>
+                  <TableHead>Paid</TableHead><TableHead>Pending</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{r.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.category_name || '—'}</TableCell>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.invoice_number}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.customer_name || 'Walk-in Customer'}</TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize">{r.payment_method.replace('_', ' ')}</Badge></TableCell>
                     <TableCell>
-                      <span className={r.is_low_stock ? 'font-semibold text-destructive' : ''}>{r.quantity} {r.unit}</span>
+                      <Badge variant={r.payment_status === 'unpaid' ? 'destructive' : 'orange'} className="capitalize">{r.payment_status}</Badge>
                     </TableCell>
-                    <TableCell>{formatCurrency(r.purchase_price, currency)}</TableCell>
-                    <TableCell>{formatCurrency(r.selling_price, currency)}</TableCell>
-                    <TableCell className="font-semibold text-purple">{formatCurrency(r.stock_value, currency)}</TableCell>
+                    <TableCell className="font-semibold text-primary">{formatCurrency(r.grand_total, currency)}</TableCell>
+                    <TableCell className="text-success">{formatCurrency(r.paid_amount, currency)}</TableCell>
+                    <TableCell className="font-semibold text-rose">{formatCurrency(r.remaining_balance, currency)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

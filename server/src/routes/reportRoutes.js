@@ -14,8 +14,8 @@ router.use(resolveStore);
 
 router.get('/sales', reportController.getSalesReport);
 router.get('/sales-detail', reportController.getSalesDetailReport);
-router.get('/top-products', reportController.getTopProducts);
-router.get('/stock', reportController.getStockReport);
+router.get('/expenses', reportController.getExpenseReport);
+router.get('/pending-payments', reportController.getPendingPaymentReport);
 router.get('/profit', reportController.getProfitReport);
 router.get('/profit-detail', reportController.getProfitDetailReport);
 

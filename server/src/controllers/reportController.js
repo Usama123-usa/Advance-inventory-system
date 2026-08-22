@@ -202,48 +202,53 @@ const getProfitDetailReport = asyncHandler(async (req, res) => {
   });
 });
 
-// GET /api/reports/top-products?limit=&from=&to=
-const getTopProducts = asyncHandler(async (req, res) => {
-  const { limit = 10, from = null, to = null } = req.query;
-
-  const { data, error } = await supabase.rpc('get_top_products', {
-    p_store_id: req.storeId,
-    p_limit: Number(limit),
-    p_from: from,
-    p_to: to,
-  });
-
-  assertNoSupabaseError(error, 'Failed to load top products');
-  res.json({ success: true, data });
-});
-
-// GET /api/reports/stock
-const getStockReport = asyncHandler(async (req, res) => {
+// GET /api/reports/expenses — every expense recorded for the current store,
+// with its category breakdown (same data the Expenses page already shows),
+// plus a total for the whole list.
+const getExpenseReport = asyncHandler(async (req, res) => {
   const { data, error } = await supabase
-    .from('products')
-    .select(
-      'name, sku, barcode, unit, purchase_price, selling_price, categories(name), store_products!inner(stock, low_stock_threshold, is_low_stock)'
-    )
-    .eq('store_products.store_id', req.storeId)
-    .order('name', { ascending: true });
+    .from('expenses')
+    .select('id, date, description, amount, users(name), expense_category_links(amount, expense_categories(id, name))')
+    .eq('store_id', req.storeId)
+    .order('date', { ascending: false })
+    .range(0, 4999);
 
-  assertNoSupabaseError(error, 'Failed to load stock report');
+  assertNoSupabaseError(error, 'Failed to load expense report');
 
-  const rows = data.map(({ categories, store_products, purchase_price, ...rest }) => {
-    const sp = Array.isArray(store_products) ? store_products[0] : store_products;
-    const quantity = sp?.stock ?? 0;
+  const rows = data.map((row) => {
+    const { users, expense_category_links, ...rest } = row;
     return {
       ...rest,
-      purchase_price,
-      category_name: categories?.name || null,
-      quantity,
-      is_low_stock: sp?.is_low_stock ?? false,
-      stock_value: Number((quantity * purchase_price).toFixed(2)),
+      created_by_name: users?.name || null,
+      categories: (expense_category_links || [])
+        .filter((link) => link.expense_categories)
+        .map((link) => ({ ...link.expense_categories, amount: Number(link.amount) })),
     };
   });
 
-  const totalStockValue = rows.reduce((sum, r) => sum + r.stock_value, 0);
-  res.json({ success: true, data: rows, meta: { totalStockValue } });
+  const totalExpenses = rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  res.json({ success: true, data: rows, meta: { totalExpenses, totalEntries: rows.length } });
+});
+
+// GET /api/reports/pending-payments — every invoice for the current store
+// with an outstanding balance (partial/unpaid), read straight from
+// sales/sale data (distinct from the customer_balances ledger the dedicated
+// Pending Payments page uses).
+const getPendingPaymentReport = asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('sales')
+    .select(
+      'id, invoice_number, created_at, customer_name, customer_phone, payment_method, payment_status, grand_total, paid_amount, remaining_balance'
+    )
+    .eq('store_id', req.storeId)
+    .gt('remaining_balance', 0)
+    .order('created_at', { ascending: false })
+    .range(0, 4999);
+
+  assertNoSupabaseError(error, 'Failed to load pending payment report');
+
+  const totalPending = data.reduce((sum, r) => sum + Number(r.remaining_balance), 0);
+  res.json({ success: true, data, meta: { totalPending, totalInvoices: data.length } });
 });
 
 // GET /api/reports/profit?from=&to=
@@ -294,8 +299,8 @@ const getAllStoresReport = asyncHandler(async (req, res) => {
 module.exports = {
   getSalesReport,
   getSalesDetailReport,
-  getTopProducts,
-  getStockReport,
+  getExpenseReport,
+  getPendingPaymentReport,
   getProfitReport,
   getProfitDetailReport,
   getAllStoresReport,

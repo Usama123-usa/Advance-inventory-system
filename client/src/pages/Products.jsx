@@ -115,7 +115,7 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProduct
 export default function Products() {
   const { isAdmin, isStoreManager } = useAuth();
   const canManageProducts = isAdmin || isStoreManager;
-  const { stores } = useStore();
+  const { stores, currentStore } = useStore();
   const subStores = stores.filter((s) => !s.is_main && s.is_active);
 
   const [products, setProducts] = useState([]);
@@ -480,7 +480,9 @@ export default function Products() {
 
                 {!editing && (
                   <p className="text-xs text-muted-foreground sm:col-span-2 -mt-2">
-                    {isAdmin ? 'Initial stock is added to the Main Store.' : 'Initial stock is added to your store.'}
+                    {currentStore?.is_main
+                      ? 'Creating from the Main Store: this product becomes available in every store, with the initial stock above added to the Main Store (every other store starts at zero).'
+                      : `Creating from ${currentStore?.name || 'your store'}: this product will only be available here, at the initial stock above.`}
                   </p>
                 )}
 
@@ -506,10 +508,10 @@ export default function Products() {
                   <Label>Description</Label>
                   <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                 </div>
-                {subStores.length > 0 && (
+                {editing && isAdmin && subStores.length > 0 && (
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label>
-                      Add to which stores? <span className="text-xs font-normal text-muted-foreground">(Main Store is always included, at zero stock for other stores)</span>
+                      Also assign to additional stores <span className="text-xs font-normal text-muted-foreground">(optional — adds this product at zero stock; does not remove it from any store)</span>
                     </Label>
                     <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-border p-3">
                       {subStores.map((s) => (
