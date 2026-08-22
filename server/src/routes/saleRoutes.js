@@ -55,6 +55,18 @@ router.get('/:id', saleController.getSaleById);
 router.delete('/:id', requireRole('admin'), saleController.deleteSale);
 
 router.post(
+  '/:id/return',
+  [
+    body('items').isArray({ min: 1 }).withMessage('Select at least one product to return'),
+    body('items.*.saleItemId').isUUID().withMessage('Valid line item is required for every returned product'),
+    body('items.*.quantity').isFloat({ gt: 0 }).withMessage('Quantity must be greater than 0 for every item'),
+    body('reason').optional({ nullable: true }).isString().trim(),
+  ],
+  validate,
+  saleController.createSaleReturn
+);
+
+router.post(
   '/',
   [
     body('invoiceNumber').trim().notEmpty().withMessage('Invoice number is required').isLength({ max: 40 }).withMessage('Invoice number is too long'),

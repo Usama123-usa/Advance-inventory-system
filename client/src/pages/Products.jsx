@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, memo } from 'react';
 import { Plus, Search, Pencil, Trash2, Package, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api, { getErrorMessage, cachedGet } from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/context/AuthContext';
 import { useStore } from '@/context/StoreContext';
@@ -137,8 +137,11 @@ export default function Products() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Plain (uncached) fetch — Categories.jsx writes are uncached too, and
+  // since this page unmounts/remounts on every navigation, a freshly added
+  // category always shows up here without needing a hard refresh.
   useEffect(() => {
-    cachedGet('/categories', { params: { limit: 200 } }).then(({ data }) => setCategories(data.data));
+    api.get('/categories', { params: { limit: 200 } }).then(({ data }) => setCategories(data.data));
   }, []);
 
   useEffect(() => {

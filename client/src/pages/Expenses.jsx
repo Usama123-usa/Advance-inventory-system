@@ -23,7 +23,9 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-const emptyForm = { date: todayIso(), categoryIds: [], description: '', amount: '' };
+// categoryAmounts is keyed by categoryId -> amount string, one entry per id
+// currently in categoryIds (kept in sync by setCategoryIds below).
+const emptyForm = { date: todayIso(), categoryIds: [], categoryAmounts: {}, description: '' };
 
 export default function Expenses() {
   const { settings } = useSettings();
@@ -88,14 +90,31 @@ export default function Expenses() {
 
   const openEdit = (expense) => {
     setEditing(expense);
+    const categories = expense.categories || [];
     setForm({
       date: expense.date,
-      categoryIds: (expense.categories || []).map((c) => c.id),
+      categoryIds: categories.map((c) => c.id),
+      categoryAmounts: Object.fromEntries(categories.map((c) => [c.id, String(c.amount)])),
       description: expense.description || '',
-      amount: String(expense.amount),
     });
     setDialogOpen(true);
   };
+
+  // Keeps categoryAmounts in sync with categoryIds: newly selected
+  // categories get a blank amount, deselected ones are dropped.
+  const setCategoryIds = (ids) => {
+    setForm((f) => ({
+      ...f,
+      categoryIds: ids,
+      categoryAmounts: Object.fromEntries(ids.map((id) => [id, f.categoryAmounts[id] ?? ''])),
+    }));
+  };
+
+  const setCategoryAmount = (id, value) => {
+    setForm((f) => ({ ...f, categoryAmounts: { ...f.categoryAmounts, [id]: value } }));
+  };
+
+  const categoriesTotal = form.categoryIds.reduce((sum, id) => sum + (Number(form.categoryAmounts[id]) || 0), 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -103,13 +122,22 @@ export default function Expenses() {
       toast.error('Select at least one expense category');
       return;
     }
+    if (categoriesTotal <= 0) {
+      toast.error('Enter an amount greater than zero for at least one category');
+      return;
+    }
+    const payload = {
+      date: form.date,
+      description: form.description,
+      categories: form.categoryIds.map((id) => ({ categoryId: id, amount: Number(form.categoryAmounts[id]) || 0 })),
+    };
     setSaving(true);
     try {
       if (editing) {
-        await api.put(`/expenses/${editing.id}`, form);
+        await api.put(`/expenses/${editing.id}`, payload);
         toast.success('Expense updated');
       } else {
-        await api.post('/expenses', form);
+        await api.post('/expenses', payload);
         toast.success('Expense added');
       }
       setDialogOpen(false);
@@ -201,7 +229,7 @@ export default function Expenses() {
                           '—'
                         ) : (
                           exp.categories.map((c) => (
-                            <Badge key={c.id} variant="secondary">{c.name}</Badge>
+                            <Badge key={c.id} variant="secondary">{c.name} ({formatCurrency(c.amount, currency)})</Badge>
                           ))
                         )}
                       </div>
@@ -242,7 +270,7 @@ export default function Expenses() {
                 <MultiSelect
                   options={categoryOptions}
                   value={form.categoryIds}
-                  onChange={(ids) => setForm({ ...form, categoryIds: ids })}
+                  onChange={setCategoryIds}
                   placeholder="Select categories"
                 />
               </div>
@@ -251,10 +279,51 @@ export default function Expenses() {
               <Label>Description</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
-            <div className="space-y-1.5">
-              <Label>Amount</Label>
-              <Input type="number" step="0.01" min="0" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-            </div>
+
+            {form.categoryIds.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Amount per Category</Label>
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary/50 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Category</th>
+                        <th className="px-3 py-2 text-left font-medium">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {form.categoryIds.map((id) => {
+                        const category = categoryOptions.find((c) => c.value === id);
+                        return (
+                          <tr key={id} className="border-t border-border">
+                            <td className="px-3 py-2">{category?.label || '—'}</td>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                required
+                                value={form.categoryAmounts[id] ?? ''}
+                                onChange={(e) => setCategoryAmount(id, e.target.value)}
+                                className="h-8 w-32"
+                                placeholder="0.00"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border font-semibold">
+                        <td className="px-3 py-2">Total</td>
+                        <td className="px-3 py-2 text-rose">{formatCurrency(categoriesTotal, currency)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" variant="success" loading={saving}>{editing ? 'Save Changes' : 'Add Expense'}</Button>

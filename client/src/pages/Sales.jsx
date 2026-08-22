@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Receipt, Eye, Trash2, X } from 'lucide-react';
+import { Search, Receipt, Eye, Trash2, X, Undo2, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -16,6 +16,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SalesReturnDialog } from '@/components/sales/SalesReturnDialog';
+import { generateInvoicesPdf } from '@/lib/generateInvoicePdf';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 
 const STATUS_VARIANT = {
@@ -50,6 +52,11 @@ export default function Sales() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnSaleId, setReturnSaleId] = useState(null);
+
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
@@ -75,6 +82,9 @@ export default function Sales() {
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
   useEffect(() => setPage(1), [debouncedSearch, startDate, endDate]);
+  // Selection is page/filter-scoped — dropping it whenever the visible rows
+  // change avoids "downloading" invoices that are no longer on screen.
+  useEffect(() => setSelectedIds(new Set()), [debouncedSearch, startDate, endDate, page]);
 
   // Once the initial filter (if any) has been applied, drop it from the URL
   // so it doesn't linger stale — the inputs below remain the source of truth.
@@ -102,6 +112,43 @@ export default function Sales() {
     }
   };
 
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allOnPageSelected = sales.length > 0 && sales.every((s) => selectedIds.has(s.id));
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (allOnPageSelected) return new Set();
+      const next = new Set(prev);
+      sales.forEach((s) => next.add(s.id));
+      return next;
+    });
+  };
+
+  const openReturnDialog = (saleId = null) => {
+    setReturnSaleId(saleId);
+    setReturnDialogOpen(true);
+  };
+
+  const handleDownloadSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setDownloading(true);
+    try {
+      const results = await Promise.all(Array.from(selectedIds).map((id) => api.get(`/sales/${id}`)));
+      generateInvoicesPdf(results.map((r) => r.data.data), settings);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -110,6 +157,16 @@ export default function Sales() {
           hasDateFilter
             ? `Showing invoices ${startDate ? `from ${formatDate(startDate)}` : ''}${startDate && endDate ? ' ' : ''}${endDate ? `through ${formatDate(endDate)}` : ''}`
             : 'History of every invoice generated at the till'
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={() => openReturnDialog()}>
+              <Undo2 className="h-4 w-4" /> Stock Return
+            </Button>
+            <Button onClick={handleDownloadSelected} loading={downloading} disabled={selectedIds.size === 0}>
+              <Download className="h-4 w-4" /> Download{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+            </Button>
+          </>
         }
       />
 
@@ -149,7 +206,7 @@ export default function Sales() {
 
       <Card className="p-4">
         {loading ? (
-          <TableSkeleton rows={8} cols={7} />
+          <TableSkeleton rows={8} cols={9} />
         ) : sales.length === 0 ? (
           <EmptyState icon={Receipt} title="No sales yet" description="Invoices generated from the POS will show up here." />
         ) : (
@@ -157,6 +214,15 @@ export default function Sales() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all invoices on this page"
+                    />
+                  </TableHead>
                   <TableHead>Invoice</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Cashier</TableHead>
@@ -170,6 +236,15 @@ export default function Sales() {
               <TableBody>
                 {sales.map((sale) => (
                   <TableRow key={sale.id}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={selectedIds.has(sale.id)}
+                        onChange={() => toggleSelect(sale.id)}
+                        aria-label={`Select invoice ${sale.invoice_number}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{sale.invoice_number}</TableCell>
                     <TableCell className="text-muted-foreground">{sale.customer_name || 'Walk-in Customer'}</TableCell>
                     <TableCell className="text-muted-foreground">{sale.cashier_name || '—'}</TableCell>
@@ -183,6 +258,9 @@ export default function Sales() {
                     <TableCell className="text-muted-foreground">{formatDateTime(sale.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openReturnDialog(sale.id)} title="Stock return">
+                          <Undo2 className="h-4 w-4 text-orange" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => navigate(`/invoice/${sale.id}`)} title="View invoice">
                           <Eye className="h-4 w-4 text-purple" />
                         </Button>
@@ -213,6 +291,13 @@ export default function Sales() {
         }
         loading={deleting}
         onConfirm={handleDelete}
+      />
+
+      <SalesReturnDialog
+        open={returnDialogOpen}
+        onOpenChange={setReturnDialogOpen}
+        initialSaleId={returnSaleId}
+        onSuccess={fetchSales}
       />
     </div>
   );

@@ -16,8 +16,9 @@ router.get('/categories', expenseController.getExpenseCategories);
 router.post(
   '/',
   [
-    body('categoryIds').isArray({ min: 1 }).withMessage('Select at least one expense category'),
-    body('amount').isFloat({ min: 0 }).withMessage('Amount must be a positive number'),
+    body('categories').isArray({ min: 1 }).withMessage('Select at least one expense category'),
+    body('categories.*.categoryId').isUUID().withMessage('Every category needs a valid id'),
+    body('categories.*.amount').isFloat({ min: 0 }).withMessage('Every category needs a valid amount'),
   ],
   validate,
   expenseController.createExpense
@@ -26,8 +27,9 @@ router.post(
 router.put(
   '/:id',
   [
-    body('categoryIds').optional().isArray({ min: 1 }).withMessage('Select at least one expense category'),
-    body('amount').optional().isFloat({ min: 0 }),
+    body('categories').optional().isArray({ min: 1 }).withMessage('Select at least one expense category'),
+    body('categories.*.categoryId').optional().isUUID().withMessage('Every category needs a valid id'),
+    body('categories.*.amount').optional().isFloat({ min: 0 }).withMessage('Every category needs a valid amount'),
   ],
   validate,
   expenseController.updateExpense

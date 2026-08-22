@@ -2,10 +2,19 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDateTime } from './utils';
 
-export function generateInvoicePdf(sale, settings) {
+const PAGE_MARGIN_X = 40;
+const PAGE_MARGIN_BOTTOM = 40;
+
+// Renders one invoice starting at the current cursor position on `doc`.
+// Shared by generateInvoicePdf() (single invoice) and generateInvoicesPdf()
+// (one PDF per selected invoice, each on its own page) so both get the same
+// layout — and the same overlap fix — for free.
+function renderInvoicePage(doc, sale, settings) {
   const currency = settings?.currency || 'PKR';
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const marginX = 40;
+  const marginX = PAGE_MARGIN_X;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const rightEdge = pageWidth - marginX;
   let y = 50;
 
   doc.setFontSize(18);
@@ -21,16 +30,16 @@ export function generateInvoicePdf(sale, settings) {
 
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('INVOICE', 555, 50, { align: 'right' });
+  doc.text('INVOICE', rightEdge, 50, { align: 'right' });
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Invoice #: ${sale.invoice_number}`, 555, 68, { align: 'right' });
-  doc.text(`Date: ${formatDateTime(sale.created_at)}`, 555, 82, { align: 'right' });
-  doc.text(`Payment: ${sale.payment_method.replace('_', ' ')}`, 555, 96, { align: 'right' });
+  doc.text(`Invoice #: ${sale.invoice_number}`, rightEdge, 68, { align: 'right' });
+  doc.text(`Date: ${formatDateTime(sale.created_at)}`, rightEdge, 82, { align: 'right' });
+  doc.text(`Payment: ${sale.payment_method.replace('_', ' ')}`, rightEdge, 96, { align: 'right' });
 
   y = Math.max(y, 110) + 20;
   doc.setDrawColor(220);
-  doc.line(marginX, y, 555, y);
+  doc.line(marginX, y, rightEdge, y);
   y += 20;
 
   doc.setFont('helvetica', 'bold');
@@ -58,7 +67,7 @@ export function generateInvoicePdf(sale, settings) {
     }),
     theme: 'striped',
     headStyles: { fillColor: [37, 99, 235] },
-    margin: { left: marginX, right: 40 },
+    margin: { left: marginX, right: marginX },
     styles: { fontSize: 10 },
   });
 
@@ -77,21 +86,85 @@ export function generateInvoicePdf(sale, settings) {
   }
   summaryRows.push(['Payment Status', String(sale.payment_status || '').toUpperCase()]);
 
-  const totalRowIndex = summaryRows.findIndex(([label]) => label === 'Total Amount');
+  // Summary block + footer need roughly this much vertical room — if the
+  // product table already runs close to the bottom of the page (a long
+  // cart), start a fresh page instead of letting the block run off (or
+  // overlap) the page edge.
+  const estimatedBlockHeight = summaryRows.length * 18 + 60;
+  if (finalY + estimatedBlockHeight > pageHeight - PAGE_MARGIN_BOTTOM) {
+    doc.addPage();
+    finalY = 50;
+  }
 
-  summaryRows.forEach(([label, value], i) => {
-    const isTotal = i === totalRowIndex;
-    doc.setFont('helvetica', isTotal ? 'bold' : 'normal');
-    doc.setFontSize(isTotal ? 12 : 10);
-    doc.text(label, 420, finalY, { align: 'left' });
-    doc.text(value, 555, finalY, { align: 'right' });
-    finalY += 18;
+  const totalRowIndex = summaryRows.findIndex(([label]) => label === 'Total Amount');
+  const summaryTableWidth = 260;
+
+  // A real table (not hand-placed doc.text calls) so jsPDF allocates the
+  // label/value columns itself — a long label like "Remaining Balance" can
+  // no longer run into the right-aligned value next to it.
+  autoTable(doc, {
+    startY: finalY,
+    body: summaryRows,
+    theme: 'plain',
+    tableWidth: summaryTableWidth,
+    margin: { left: rightEdge - summaryTableWidth, right: marginX },
+    styles: { fontSize: 10, cellPadding: { top: 3, bottom: 3, left: 0, right: 0 } },
+    columnStyles: {
+      0: { halign: 'left', cellWidth: summaryTableWidth - 100, textColor: [90, 90, 90] },
+      1: { halign: 'right', cellWidth: 100 },
+    },
+    didParseCell: (data) => {
+      if (data.row.index === totalRowIndex) {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fontSize = 12;
+        data.cell.styles.textColor = data.column.index === 0 ? [20, 20, 20] : [37, 99, 235];
+      }
+      if (data.row.raw[0] === 'Payment Status') {
+        data.cell.styles.fontStyle = 'bold';
+      }
+    },
   });
 
-  finalY += 20;
+  finalY = doc.lastAutoTable.finalY + 30;
+  if (finalY > pageHeight - PAGE_MARGIN_BOTTOM) finalY = pageHeight - PAGE_MARGIN_BOTTOM;
+
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
   doc.text(settings?.invoice_footer || 'Thank you for your business!', marginX, finalY);
+}
 
+export function generateInvoicePdf(sale, settings) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  renderInvoicePage(doc, sale, settings);
   doc.save(`${sale.invoice_number}.pdf`);
+}
+
+// Filesystem-unsafe characters (\ / : * ? " < > |) replaced with '-',
+// surrounding whitespace trimmed.
+const sanitizeFilenamePart = (value) =>
+  String(value || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+
+const buildInvoiceFilename = (sale) => {
+  const invoiceNumber = sanitizeFilenamePart(sale.invoice_number) || 'invoice';
+  const customerName = sanitizeFilenamePart(sale.customer_name);
+  return customerName ? `${invoiceNumber} - ${customerName}.pdf` : `${invoiceNumber}.pdf`;
+};
+
+// Generates one standalone PDF per invoice — used by the Sales list's
+// multi-select Download so selecting several invoices downloads several
+// separate files (one invoice each), not one combined document. Saves are
+// staggered slightly since firing many doc.save() calls synchronously in a
+// loop from a single click can cause some browsers to drop all but the
+// first of them.
+export function generateInvoicesPdf(sales, settings) {
+  if (!Array.isArray(sales) || sales.length === 0) return;
+
+  sales.forEach((sale, index) => {
+    setTimeout(() => {
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      renderInvoicePage(doc, sale, settings);
+      doc.save(buildInvoiceFilename(sale));
+    }, index * 300);
+  });
 }

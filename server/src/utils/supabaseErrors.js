@@ -18,6 +18,11 @@ const RPC_ERROR_MAP = {
   P0010: () => new ApiError(400, 'Customer name and phone are required when the sale is not fully paid'),
   P0011: () => new ApiError(400, 'This invoice number already exists. Please enter a different invoice number.'),
   P0012: () => new ApiError(400, 'Invoice number is required'),
+  P0013: (message) => {
+    const [, productName] = message.split('RETURN_EXCEEDS_SOLD: ');
+    return new ApiError(400, productName ? `Cannot return more than the sold quantity for "${productName}"` : 'Cannot return more than the sold quantity');
+  },
+  P0014: () => new ApiError(404, 'This item was not found on the selected invoice'),
 };
 
 // Throws a mapped ApiError if `error` (from a supabase-js call) is set.

@@ -8,7 +8,9 @@ const flattenExpenseRow = (row) => {
   return {
     ...rest,
     created_by_name: users?.name || null,
-    categories: (expense_category_links || []).map((link) => link.expense_categories).filter(Boolean),
+    categories: (expense_category_links || [])
+      .filter((link) => link.expense_categories)
+      .map((link) => ({ ...link.expense_categories, amount: Number(link.amount) })),
   };
 };
 
@@ -32,7 +34,7 @@ const getExpenses = asyncHandler(async (req, res) => {
 
   let queryBuilder = supabase
     .from('expenses')
-    .select('id, date, description, amount, users(name), expense_category_links(expense_categories(id, name))', { count: 'exact' })
+    .select('id, date, description, amount, users(name), expense_category_links(amount, expense_categories(id, name))', { count: 'exact' })
     .eq('store_id', req.storeId)
     .order('date', { ascending: false })
     .range(rangeFrom, rangeTo);
@@ -91,14 +93,34 @@ const getExpenseSummary = asyncHandler(async (req, res) => {
   });
 });
 
-const normalizeCategoryIds = (categoryIds) =>
-  Array.isArray(categoryIds) ? [...new Set(categoryIds.filter(Boolean))] : [];
+// Normalizes the { categoryId, amount } rows the client sends: drops
+// entries with no categoryId, dedupes by categoryId (first occurrence
+// wins), and clamps amount to a non-negative number.
+const normalizeCategoryAmounts = (categories) => {
+  if (!Array.isArray(categories)) return [];
+  const seen = new Set();
+  const normalized = [];
+  for (const entry of categories) {
+    const categoryId = entry?.categoryId;
+    if (!categoryId || seen.has(categoryId)) continue;
+    seen.add(categoryId);
+    normalized.push({ categoryId, amount: Math.max(Number(entry.amount) || 0, 0) });
+  }
+  return normalized;
+};
 
-// POST /api/expenses  { date, categoryIds, description, amount }
+// POST /api/expenses  { date, categories: [{ categoryId, amount }], description }
+// The overall expense amount is not sent by the client — it's derived
+// server-side as the sum of the per-category amounts (see
+// save_expense_categories() in sql/migration_expense_category_amounts.sql),
+// so the two can never drift apart.
 const createExpense = asyncHandler(async (req, res) => {
-  const { date, categoryIds, description, amount } = req.body;
-  const ids = normalizeCategoryIds(categoryIds);
-  if (ids.length === 0) throw new ApiError(400, 'Select at least one expense category');
+  const { date, categories, description } = req.body;
+  const normalized = normalizeCategoryAmounts(categories);
+  if (normalized.length === 0) throw new ApiError(400, 'Select at least one expense category');
+
+  const total = normalized.reduce((sum, c) => sum + c.amount, 0);
+  if (total <= 0) throw new ApiError(400, 'Enter an amount greater than zero for at least one category');
 
   const { data: expense, error } = await supabase
     .from('expenses')
@@ -106,7 +128,7 @@ const createExpense = asyncHandler(async (req, res) => {
       store_id: req.storeId,
       date: date || new Date().toISOString().slice(0, 10),
       description: description || null,
-      amount: Number(amount) || 0,
+      amount: total,
       created_by: req.user.id,
     })
     .select('id, date, description, amount')
@@ -116,7 +138,7 @@ const createExpense = asyncHandler(async (req, res) => {
 
   const { error: linkError } = await supabase.rpc('save_expense_categories', {
     p_expense_id: expense.id,
-    p_category_ids: ids,
+    p_categories: normalized,
   });
 
   if (linkError) {
@@ -124,17 +146,25 @@ const createExpense = asyncHandler(async (req, res) => {
     assertNoSupabaseError(linkError, 'Failed to save expense categories');
   }
 
-  res.status(201).json({ success: true, data: { ...expense, category_ids: ids } });
+  res.status(201).json({ success: true, data: { ...expense, categories: normalized } });
 });
 
 // PUT /api/expenses/:id
 const updateExpense = asyncHandler(async (req, res) => {
-  const { date, categoryIds, description, amount } = req.body;
+  const { date, categories, description } = req.body;
 
   const updatePayload = {};
   if (date !== undefined) updatePayload.date = date;
   if (description !== undefined) updatePayload.description = description || null;
-  if (amount !== undefined) updatePayload.amount = Number(amount) || 0;
+
+  let normalized;
+  if (categories !== undefined) {
+    normalized = normalizeCategoryAmounts(categories);
+    if (normalized.length === 0) throw new ApiError(400, 'Select at least one expense category');
+    const total = normalized.reduce((sum, c) => sum + c.amount, 0);
+    if (total <= 0) throw new ApiError(400, 'Enter an amount greater than zero for at least one category');
+    updatePayload.amount = total;
+  }
 
   const { data, error } = await supabase
     .from('expenses')
@@ -147,13 +177,10 @@ const updateExpense = asyncHandler(async (req, res) => {
   assertNoSupabaseError(error, 'Failed to update expense');
   if (!data) throw new ApiError(404, 'Expense not found');
 
-  if (categoryIds !== undefined) {
-    const ids = normalizeCategoryIds(categoryIds);
-    if (ids.length === 0) throw new ApiError(400, 'Select at least one expense category');
-
+  if (normalized) {
     const { error: linkError } = await supabase.rpc('save_expense_categories', {
       p_expense_id: data.id,
-      p_category_ids: ids,
+      p_categories: normalized,
     });
     assertNoSupabaseError(linkError, 'Failed to save expense categories');
   }

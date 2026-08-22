@@ -112,6 +112,96 @@ const getSalesDetailReport = asyncHandler(async (req, res) => {
   });
 });
 
+// GET /api/reports/profit-detail?from=&to=
+// Profit Report detail for any Daily/Weekly/Monthly/Custom Range window:
+// every product sold in the window with its units/sales-amount/cost/profit,
+// every invoice in the window (for the Invoices table — same columns as the
+// Sales Report tab's), and the window's summary totals (invoices, units,
+// sales, profit). Cost-of-goods-sold uses the same
+// quantity * products.purchase_price convention as get_profit_report() (see
+// sql/schema.sql) so "Total Sales - Total Cost = Total Profit" here matches
+// what get_profit_report() would compute for the same window — this is a
+// per-product breakdown of the exact same numbers, not a different metric.
+const getProfitDetailReport = asyncHandler(async (req, res) => {
+  const { from, to } = req.query;
+  if (!from || !to) throw new ApiError(400, 'A date range (from/to) is required');
+
+  const { data: sales, error } = await supabase
+    .from('sales')
+    .select('id, invoice_number, created_at, customer_name, payment_method, payment_status, grand_total')
+    .eq('store_id', req.storeId)
+    .gte('created_at', from)
+    .lte('created_at', to)
+    .order('created_at', { ascending: false })
+    .range(0, 4999);
+
+  assertNoSupabaseError(error, 'Failed to load sales for report');
+
+  const saleIds = sales.map((s) => s.id);
+  let items = [];
+  if (saleIds.length) {
+    const { data: itemRows, error: itemsError } = await supabase
+      .from('sale_items')
+      .select('product_id, product_name, quantity, total')
+      .in('sale_id', saleIds);
+    assertNoSupabaseError(itemsError, 'Failed to load sale items for report');
+    items = itemRows;
+  }
+
+  const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
+  let purchasePriceByProduct = new Map();
+  if (productIds.length) {
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, purchase_price')
+      .in('id', productIds);
+    assertNoSupabaseError(productsError, 'Failed to load product costs for report');
+    purchasePriceByProduct = new Map(products.map((p) => [p.id, Number(p.purchase_price) || 0]));
+  }
+
+  const productMap = new Map();
+  for (const item of items) {
+    const key = item.product_id || item.product_name;
+    if (!productMap.has(key)) {
+      productMap.set(key, { productName: item.product_name, unitsSold: 0, salesAmount: 0, cost: 0 });
+    }
+    const entry = productMap.get(key);
+    const purchasePrice = item.product_id ? purchasePriceByProduct.get(item.product_id) || 0 : 0;
+    entry.unitsSold += Number(item.quantity);
+    entry.salesAmount += Number(item.total);
+    entry.cost += Number(item.quantity) * purchasePrice;
+  }
+
+  const products = Array.from(productMap.values())
+    .map((p) => ({ ...p, profit: p.salesAmount - p.cost }))
+    .sort((a, b) => b.salesAmount - a.salesAmount);
+
+  const totals = products.reduce(
+    (acc, p) => ({
+      totalUnits: acc.totalUnits + p.unitsSold,
+      totalSales: acc.totalSales + p.salesAmount,
+      totalCost: acc.totalCost + p.cost,
+      totalProfit: acc.totalProfit + p.profit,
+    }),
+    { totalUnits: 0, totalSales: 0, totalCost: 0, totalProfit: 0 }
+  );
+
+  res.json({
+    success: true,
+    data: {
+      products,
+      sales,
+      summary: {
+        totalInvoices: sales.length,
+        totalUnits: totals.totalUnits,
+        totalSales: totals.totalSales,
+        totalCost: totals.totalCost,
+        totalProfit: totals.totalProfit,
+      },
+    },
+  });
+});
+
 // GET /api/reports/top-products?limit=&from=&to=
 const getTopProducts = asyncHandler(async (req, res) => {
   const { limit = 10, from = null, to = null } = req.query;
@@ -207,5 +297,6 @@ module.exports = {
   getTopProducts,
   getStockReport,
   getProfitReport,
+  getProfitDetailReport,
   getAllStoresReport,
 };

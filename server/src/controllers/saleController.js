@@ -291,6 +291,40 @@ const createSale = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: sale });
 });
 
+// POST /api/sales/:id/return  { items: [{ saleItemId, quantity }], reason }
+// Returns specific line items from a specific invoice via create_sale_return():
+// decrements the sold quantity on each sale_item, restocks store_products,
+// and recomputes the sale's subtotal/tax/grand_total/paid_amount/
+// remaining_balance/payment_status. Rejects any item whose requested
+// quantity exceeds what's still on that line.
+const createSaleReturn = asyncHandler(async (req, res) => {
+  const { items, reason } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new ApiError(400, 'Select at least one product to return');
+  }
+
+  const normalizedItems = items.map((item) => ({
+    saleItemId: item.saleItemId,
+    quantity: Number(item.quantity),
+  }));
+
+  if (normalizedItems.some((item) => !item.saleItemId || !item.quantity || item.quantity <= 0)) {
+    throw new ApiError(400, 'Every returned product needs a valid quantity greater than 0');
+  }
+
+  const { data, error } = await supabase.rpc('create_sale_return', {
+    p_store_id: req.storeId,
+    p_sale_id: req.params.id,
+    p_items: normalizedItems,
+    p_reason: reason || null,
+    p_user_id: req.user.id,
+  });
+
+  assertNoSupabaseError(error, 'Failed to save stock return');
+  res.status(201).json({ success: true, data: { id: data } });
+});
+
 module.exports = {
   getSales,
   getSaleById,
@@ -302,4 +336,5 @@ module.exports = {
   deletePendingPayment,
   createSale,
   deleteSale,
+  createSaleReturn,
 };

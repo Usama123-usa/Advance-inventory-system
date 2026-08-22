@@ -123,13 +123,43 @@ export default function Reports() {
     if (tab === 'sales') fetchSalesDetail();
   }, [tab, fetchSalesDetail]);
 
+  // ---- Profit tab (Daily/Weekly/Monthly/Custom Range, same selector as the
+  // Sales Report tab): per-product sales/profit breakdown, the window's
+  // invoices, and summary totals, via the dedicated /reports/profit-detail
+  // endpoint — mirrors fetchSalesDetail above.
+  const [profitDetail, setProfitDetail] = useState(null);
+  const [profitDetailLoading, setProfitDetailLoading] = useState(true);
+
+  const fetchProfitDetail = useCallback(async () => {
+    if (!salesRange) {
+      setProfitDetail(null);
+      return;
+    }
+    setProfitDetailLoading(true);
+    try {
+      const { data } = await api.get('/reports/profit-detail', {
+        params: { from: `${salesRange.startStr}T00:00:00.000Z`, to: `${salesRange.endStr}T23:59:59.999Z` },
+      });
+      setProfitDetail(data.data);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setProfitDetailLoading(false);
+    }
+  }, [salesRange]);
+
+  useEffect(() => {
+    if (tab === 'profit') fetchProfitDetail();
+  }, [tab, fetchProfitDetail]);
+
   // ---- Every other tab: unchanged bucketed/aggregate reports ----
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const isCustomRange = period === 'custom';
-  const customRangeApplies = ['top-products', 'profit'].includes(tab);
+  // top-products keeps its original custom-range-only behavior.
+  const customRangeApplies = ['top-products'].includes(tab);
   const dateRangeParams = isCustomRange && customRangeApplies && customStart && customEnd
     ? { from: customStart, to: `${customEnd}T23:59:59` }
     : {};
@@ -144,8 +174,6 @@ export default function Reports() {
         ({ data } = await api.get('/reports/stock'));
       } else if (tab === 'all-stores') {
         ({ data } = await api.get('/reports/all-stores', { params: dateRangeParams }));
-      } else if (tab === 'profit') {
-        ({ data } = await api.get('/reports/profit', { params: dateRangeParams }));
       } else {
         return;
       }
@@ -160,7 +188,7 @@ export default function Reports() {
   }, [tab, customStart, customEnd]);
 
   useEffect(() => {
-    if (tab !== 'sales') fetchReport();
+    if (tab !== 'sales' && tab !== 'profit') fetchReport();
   }, [tab, fetchReport]);
 
   const getExportData = () => {
@@ -178,17 +206,12 @@ export default function Reports() {
         rows: rows.map((r) => [r.name, r.sku || '—', r.category_name || '—', r.quantity, r.unit, r.purchase_price, r.selling_price, r.stock_value]),
       };
     }
-    if (tab === 'all-stores') {
-      return {
-        title: 'All Stores Report',
-        columns: ['Store', 'Type', 'Orders', 'Total Sales', 'Total Expenses', 'Net Profit'],
-        rows: rows.map((r) => [r.store_name, r.is_main ? 'Main' : 'Sub', r.total_orders, r.total_sales, r.total_expenses, r.net_profit]),
-      };
-    }
+    // tab === 'all-stores' (the only remaining case — 'sales'/'profit' use
+    // their own dedicated multi-section exports below).
     return {
-      title: 'Profit Report',
-      columns: ['Date', 'Revenue', 'Cost', 'Profit'],
-      rows: rows.map((r) => [formatDate(r.date), r.revenue, r.cost, r.profit]),
+      title: 'All Stores Report',
+      columns: ['Store', 'Type', 'Orders', 'Total Sales', 'Total Expenses', 'Net Profit'],
+      rows: rows.map((r) => [r.store_name, r.is_main ? 'Main' : 'Sub', r.total_orders, r.total_sales, r.total_expenses, r.net_profit]),
     };
   };
 
@@ -247,7 +270,47 @@ export default function Reports() {
     ];
   };
 
-  const exportDisabled = tab === 'sales' ? !salesDetail || salesDetail.sales.length === 0 : rows.length === 0;
+  // ---- Profit tab (any period): multi-section export (summary totals +
+  // product breakdown + invoices), same pattern as getSalesDetailExportSections().
+  const getProfitDetailExportSections = () => {
+    if (!profitDetail) return [];
+    const { summary, products, sales } = profitDetail;
+    return [
+      {
+        title: 'Summary',
+        columns: ['Metric', 'Value'],
+        rows: [
+          ['Total Invoices', summary.totalInvoices],
+          ['Total Units Sold', summary.totalUnits],
+          ['Total Sales', formatCurrency(summary.totalSales, currency)],
+          ['Total Profit', formatCurrency(summary.totalProfit, currency)],
+        ],
+      },
+      {
+        title: 'Product-wise Sales & Profit',
+        columns: ['Product', 'Units Sold', 'Sales Amount', 'Profit'],
+        rows: products.map((p) => [p.productName, p.unitsSold, formatCurrency(p.salesAmount, currency), formatCurrency(p.profit, currency)]),
+      },
+      {
+        title: 'Invoices',
+        columns: ['Invoice #', 'Date', 'Customer', 'Payment Method', 'Status', 'Total'],
+        rows: (sales || []).map((s) => [
+          s.invoice_number,
+          formatDateTime(s.created_at),
+          s.customer_name || 'Walk-in Customer',
+          s.payment_method,
+          s.payment_status,
+          formatCurrency(s.grand_total, currency),
+        ]),
+      },
+    ];
+  };
+
+  const exportDisabled = tab === 'sales'
+    ? !salesDetail || salesDetail.sales.length === 0
+    : tab === 'profit'
+    ? !profitDetail || profitDetail.products.length === 0
+    : rows.length === 0;
 
   const handleExportPdf = () => {
     if (tab === 'sales') {
@@ -260,6 +323,11 @@ export default function Reports() {
       );
       return;
     }
+    if (tab === 'profit') {
+      if (!profitDetail) return;
+      exportMultiSectionPdf(`${PERIOD_LABEL[period]} Profit Report`, salesRange?.label || '', getProfitDetailExportSections(), `profit-report-${period}`);
+      return;
+    }
     const { title, columns, rows: exportRows } = getExportData();
     exportReportToPdf(title, columns, exportRows, tab);
   };
@@ -268,6 +336,11 @@ export default function Reports() {
     if (tab === 'sales') {
       if (!salesDetail) return;
       exportMultiSectionExcel(getSalesDetailExportSections(), `sales-report-${period}`);
+      return;
+    }
+    if (tab === 'profit') {
+      if (!profitDetail) return;
+      exportMultiSectionExcel(getProfitDetailExportSections(), `profit-report-${period}`);
       return;
     }
     const { title, columns, rows: exportRows } = getExportData();
@@ -279,7 +352,7 @@ export default function Reports() {
       <PageHeader
         title="Reports"
         description={
-          tab === 'sales' && salesRange
+          (tab === 'sales' || tab === 'profit') && salesRange
             ? `${PERIOD_LABEL[period]} Report — ${salesRange.label}`
             : 'Analyze sales, stock, and profitability'
         }
@@ -310,7 +383,7 @@ export default function Reports() {
           ))}
         </div>
 
-        {tab === 'sales' && (
+        {(tab === 'sales' || tab === 'profit') && (
           <div className="flex flex-wrap items-center gap-2">
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
@@ -374,11 +447,24 @@ export default function Reports() {
         </div>
       )}
 
-      {meta && tab === 'profit' && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Revenue</p><p className="font-display text-xl font-bold text-primary">{formatCurrency(meta.revenue, currency)}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Total Cost</p><p className="font-display text-xl font-bold text-rose">{formatCurrency(meta.cost, currency)}</p></Card>
-          <Card className="p-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className="font-display text-xl font-bold text-success">{formatCurrency(meta.profit, currency)}</p></Card>
+      {tab === 'profit' && profitDetail && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Total Invoices</p>
+            <p className="font-display mt-1 truncate text-lg font-bold text-primary">{profitDetail.summary.totalInvoices}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Total Units Sold</p>
+            <p className="font-display mt-1 truncate text-lg font-bold text-purple">{profitDetail.summary.totalUnits}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Total Sales</p>
+            <p className="font-display mt-1 truncate text-lg font-bold text-accent">{formatCurrency(profitDetail.summary.totalSales, currency)}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Total Profit</p>
+            <p className="font-display mt-1 truncate text-lg font-bold text-success">{formatCurrency(profitDetail.summary.totalProfit, currency)}</p>
+          </Card>
         </div>
       )}
 
@@ -470,6 +556,78 @@ export default function Reports() {
             </Card>
           </>
         )
+      ) : tab === 'profit' ? (
+        profitDetailLoading ? (
+          <Card className="p-4"><TableSkeleton rows={6} cols={4} /></Card>
+        ) : !profitDetail || profitDetail.products.length === 0 ? (
+          <Card className="p-4">
+            <EmptyState icon={BarChart3} title="No sales in this range" description="Try a different date, week, month, or custom range." />
+          </Card>
+        ) : (
+          <>
+            <Card className="p-4">
+              <h3 className="mb-3 font-display text-base font-bold">Product-wise Sales &amp; Profit</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Units Sold</TableHead>
+                    <TableHead>Sales Amount</TableHead>
+                    <TableHead>Profit</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {profitDetail.products.map((p, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{p.productName}</TableCell>
+                      <TableCell><Badge variant="purple">{p.unitsSold}</Badge></TableCell>
+                      <TableCell className="text-primary">{formatCurrency(p.salesAmount, currency)}</TableCell>
+                      <TableCell className="font-semibold text-success">{formatCurrency(p.profit, currency)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+
+            <Card className="p-4">
+              <h3 className="mb-3 font-display text-base font-bold">Invoices ({(profitDetail.sales || []).length})</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead>Date &amp; Time</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(profitDetail.sales || []).map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-medium">{s.invoice_number}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatDateTime(s.created_at)}</TableCell>
+                      <TableCell className="text-muted-foreground">{s.customer_name || 'Walk-in Customer'}</TableCell>
+                      <TableCell><Badge variant="outline" className="capitalize">{s.payment_method.replace('_', ' ')}</Badge></TableCell>
+                      <TableCell>
+                        <Badge variant={s.payment_status === 'paid' ? 'success' : s.payment_status === 'unpaid' ? 'destructive' : 'orange'} className="capitalize">
+                          {s.payment_status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-semibold text-primary">{formatCurrency(s.grand_total, currency)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => navigate(`/invoice/${s.id}`)} title="View invoice">
+                          <Eye className="h-4 w-4 text-purple" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </>
+        )
       ) : (
         <Card className="p-4">
           {loading ? (
@@ -515,7 +673,9 @@ export default function Reports() {
                 ))}
               </TableBody>
             </Table>
-          ) : tab === 'all-stores' ? (
+          ) : (
+            // tab === 'all-stores' (the only remaining case — 'sales'/'profit'
+            // are handled by their own branches above this generic Card).
             <Table>
               <TableHeader>
                 <TableRow>
@@ -532,22 +692,6 @@ export default function Reports() {
                     <TableCell className="text-success">{formatCurrency(r.total_sales, currency)}</TableCell>
                     <TableCell className="text-rose">{formatCurrency(r.total_expenses, currency)}</TableCell>
                     <TableCell className="font-semibold text-success">{formatCurrency(r.net_profit, currency)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead>Date</TableHead><TableHead>Revenue</TableHead><TableHead>Cost</TableHead><TableHead>Profit</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{formatDate(r.date)}</TableCell>
-                    <TableCell className="text-primary">{formatCurrency(r.revenue, currency)}</TableCell>
-                    <TableCell className="text-rose">{formatCurrency(r.cost, currency)}</TableCell>
-                    <TableCell className="font-semibold text-success">{formatCurrency(r.profit, currency)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
