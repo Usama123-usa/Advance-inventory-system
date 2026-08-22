@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
@@ -8,23 +8,24 @@ import { SettingsProvider } from '@/context/SettingsContext';
 import { StoreProvider } from '@/context/StoreContext';
 import { ProtectedRoute, RoleGate } from '@/components/layout/ProtectedRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
-const Login = lazy(() => import('@/pages/Login'));
-const Dashboard = lazy(() => import('@/pages/Dashboard'));
-const Categories = lazy(() => import('@/pages/Categories'));
-const Products = lazy(() => import('@/pages/Products'));
-const Inventory = lazy(() => import('@/pages/Inventory'));
-const Customers = lazy(() => import('@/pages/Customers'));
-const POS = lazy(() => import('@/pages/POS'));
-const Sales = lazy(() => import('@/pages/Sales'));
-const Invoice = lazy(() => import('@/pages/Invoice'));
-const Reports = lazy(() => import('@/pages/Reports'));
-const Settings = lazy(() => import('@/pages/Settings'));
-const Expenses = lazy(() => import('@/pages/Expenses'));
-const PendingPayments = lazy(() => import('@/pages/PendingPayments'));
-const StoreManagement = lazy(() => import('@/pages/StoreManagement'));
-const UserManagement = lazy(() => import('@/pages/UserManagement'));
-const NotFound = lazy(() => import('@/pages/NotFound'));
+const Login = lazyWithRetry(() => import('@/pages/Login'));
+const Dashboard = lazyWithRetry(() => import('@/pages/Dashboard'));
+const Categories = lazyWithRetry(() => import('@/pages/Categories'));
+const Products = lazyWithRetry(() => import('@/pages/Products'));
+const Inventory = lazyWithRetry(() => import('@/pages/Inventory'));
+const Customers = lazyWithRetry(() => import('@/pages/Customers'));
+const POS = lazyWithRetry(() => import('@/pages/POS'));
+const Sales = lazyWithRetry(() => import('@/pages/Sales'));
+const Invoice = lazyWithRetry(() => import('@/pages/Invoice'));
+const Reports = lazyWithRetry(() => import('@/pages/Reports'));
+const Settings = lazyWithRetry(() => import('@/pages/Settings'));
+const Expenses = lazyWithRetry(() => import('@/pages/Expenses'));
+const PendingPayments = lazyWithRetry(() => import('@/pages/PendingPayments'));
+const StoreManagement = lazyWithRetry(() => import('@/pages/StoreManagement'));
+const UserManagement = lazyWithRetry(() => import('@/pages/UserManagement'));
+const NotFound = lazyWithRetry(() => import('@/pages/NotFound'));
 
 function RouteFallback() {
   return (

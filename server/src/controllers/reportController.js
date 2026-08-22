@@ -49,11 +49,31 @@ const getSalesDetailReport = asyncHandler(async (req, res) => {
   if (saleIds.length) {
     const { data: itemRows, error: itemsError } = await supabase
       .from('sale_items')
-      .select('sale_id, product_name, quantity, unit_price, total')
+      .select('sale_id, product_id, product_name, quantity, unit_price, total')
       .in('sale_id', saleIds);
     assertNoSupabaseError(itemsError, 'Failed to load sale items for report');
     items = itemRows;
   }
+
+  // Total Profit: revenue (sum of each line's own total) minus
+  // cost-of-goods-sold (quantity * products.purchase_price) — the same
+  // convention get_profit_report()/getProfitDetailReport use, so this
+  // number always agrees with the Profit Report for the same window.
+  const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
+  let purchasePriceByProduct = new Map();
+  if (productIds.length) {
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, purchase_price')
+      .in('id', productIds);
+    assertNoSupabaseError(productsError, 'Failed to load product costs for report');
+    purchasePriceByProduct = new Map(products.map((p) => [p.id, Number(p.purchase_price) || 0]));
+  }
+  const totalCost = items.reduce(
+    (sum, item) => sum + Number(item.quantity) * (item.product_id ? purchasePriceByProduct.get(item.product_id) || 0 : 0),
+    0
+  );
+  const totalRevenue = items.reduce((sum, item) => sum + Number(item.total), 0);
 
   const itemsBySale = new Map();
   for (const item of items) {
@@ -107,6 +127,7 @@ const getSalesDetailReport = asyncHandler(async (req, res) => {
         totalQuantity: items.reduce((sum, i) => sum + Number(i.quantity), 0),
         totalPaid: summary.totalPaid,
         totalPending: summary.totalPending,
+        totalProfit: totalRevenue - totalCost,
       },
     },
   });

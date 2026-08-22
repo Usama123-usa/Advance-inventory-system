@@ -234,6 +234,7 @@ export default function Reports() {
           ['Quantity Sold', summary.totalQuantity],
           ['Total Paid', formatCurrency(summary.totalPaid, currency)],
           ['Total Pending', formatCurrency(summary.totalPending, currency)],
+          ['Total Profit', formatCurrency(summary.totalProfit, currency)],
         ],
       },
       {
@@ -424,7 +425,7 @@ export default function Reports() {
       </div>
 
       {tab === 'sales' && salesDetail && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Total Sales</p>
             <p className="font-display mt-1 truncate text-lg font-bold text-primary">{formatCurrency(salesDetail.summary.totalSales, currency)}</p>
@@ -448,6 +449,10 @@ export default function Reports() {
           <Card className="p-4">
             <p className="text-xs text-muted-foreground">Total Pending</p>
             <p className="font-display mt-1 truncate text-lg font-bold text-rose">{formatCurrency(salesDetail.summary.totalPending, currency)}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground">Total Profit</p>
+            <p className="font-display mt-1 truncate text-lg font-bold text-success">{formatCurrency(salesDetail.summary.totalProfit, currency)}</p>
           </Card>
         </div>
       )}
