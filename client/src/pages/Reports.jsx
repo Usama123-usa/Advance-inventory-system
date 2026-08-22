@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { FileDown, FileSpreadsheet, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
@@ -97,7 +97,13 @@ export default function Reports() {
     return { startStr: customStart, endStr: customEnd, label: `${formatDate(customStart)} – ${formatDate(customEnd)}` };
   }, [period, dailyDate, weeklyDate, monthlyMonth, customStart, customEnd]);
 
+  // Guards against out-of-order responses: if the user switches period/tab
+  // again before an in-flight request resolves, a late-arriving older
+  // response must not overwrite what a newer request already set.
+  const salesDetailRequestRef = useRef(0);
+
   const fetchSalesDetail = useCallback(async () => {
+    const requestId = ++salesDetailRequestRef.current;
     if (!salesRange) {
       setSalesDetail(null);
       return;
@@ -109,11 +115,12 @@ export default function Reports() {
         // Dashboard's Today's Sales figure, so numbers never disagree.
         params: { from: `${salesRange.startStr}T00:00:00.000Z`, to: `${salesRange.endStr}T23:59:59.999Z` },
       });
+      if (requestId !== salesDetailRequestRef.current) return;
       setSalesDetail(data.data);
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      if (requestId === salesDetailRequestRef.current) toast.error(getErrorMessage(err));
     } finally {
-      setSalesDetailLoading(false);
+      if (requestId === salesDetailRequestRef.current) setSalesDetailLoading(false);
     }
   }, [salesRange]);
 
@@ -128,7 +135,10 @@ export default function Reports() {
   const [profitDetail, setProfitDetail] = useState(null);
   const [profitDetailLoading, setProfitDetailLoading] = useState(true);
 
+  const profitDetailRequestRef = useRef(0);
+
   const fetchProfitDetail = useCallback(async () => {
+    const requestId = ++profitDetailRequestRef.current;
     if (!salesRange) {
       setProfitDetail(null);
       return;
@@ -138,11 +148,12 @@ export default function Reports() {
       const { data } = await api.get('/reports/profit-detail', {
         params: { from: `${salesRange.startStr}T00:00:00.000Z`, to: `${salesRange.endStr}T23:59:59.999Z` },
       });
+      if (requestId !== profitDetailRequestRef.current) return;
       setProfitDetail(data.data);
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      if (requestId === profitDetailRequestRef.current) toast.error(getErrorMessage(err));
     } finally {
-      setProfitDetailLoading(false);
+      if (requestId === profitDetailRequestRef.current) setProfitDetailLoading(false);
     }
   }, [salesRange]);
 
@@ -155,7 +166,17 @@ export default function Reports() {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // This one shared `rows` state backs three structurally different shapes
+  // (expenses/pending-payments/all-stores) depending on `tab` — without this
+  // guard, switching tabs quickly could let a slower, stale response for a
+  // PREVIOUS tab land after a newer one and overwrite `rows` with the wrong
+  // shape while `tab` had already moved on, crashing the render (e.g. an
+  // expense row has no `payment_method`, which the pending-payments table
+  // reads unconditionally).
+  const reportRequestRef = useRef(0);
+
   const fetchReport = useCallback(async () => {
+    const requestId = ++reportRequestRef.current;
     setLoading(true);
     try {
       let data;
@@ -168,12 +189,13 @@ export default function Reports() {
       } else {
         return;
       }
+      if (requestId !== reportRequestRef.current) return;
       setRows(data.data);
       setMeta(data.meta || null);
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      if (requestId === reportRequestRef.current) toast.error(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestRef.current) setLoading(false);
     }
   }, [tab]);
 
@@ -553,7 +575,7 @@ export default function Reports() {
                       <TableCell className="font-medium">{s.invoice_number}</TableCell>
                       <TableCell className="text-muted-foreground">{formatDateTime(s.created_at)}</TableCell>
                       <TableCell className="text-muted-foreground">{s.customer_name || 'Walk-in Customer'}</TableCell>
-                      <TableCell><Badge variant="outline" className="capitalize">{s.payment_method.replace('_', ' ')}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="capitalize">{(s.payment_method || '').replace('_', ' ')}</Badge></TableCell>
                       <TableCell>
                         <Badge variant={s.payment_status === 'paid' ? 'success' : s.payment_status === 'unpaid' ? 'destructive' : 'orange'} className="capitalize">
                           {s.payment_status}
@@ -619,7 +641,7 @@ export default function Reports() {
                       <TableCell className="font-medium">{s.invoice_number}</TableCell>
                       <TableCell className="text-muted-foreground">{formatDateTime(s.created_at)}</TableCell>
                       <TableCell className="text-muted-foreground">{s.customer_name || 'Walk-in Customer'}</TableCell>
-                      <TableCell><Badge variant="outline" className="capitalize">{s.payment_method.replace('_', ' ')}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="capitalize">{(s.payment_method || '').replace('_', ' ')}</Badge></TableCell>
                       <TableCell>
                         <Badge variant={s.payment_status === 'paid' ? 'success' : s.payment_status === 'unpaid' ? 'destructive' : 'orange'} className="capitalize">
                           {s.payment_status}
@@ -680,7 +702,7 @@ export default function Reports() {
                     <TableCell className="font-medium">{r.invoice_number}</TableCell>
                     <TableCell className="text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
                     <TableCell className="text-muted-foreground">{r.customer_name || 'Walk-in Customer'}</TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize">{r.payment_method.replace('_', ' ')}</Badge></TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize">{(r.payment_method || '').replace('_', ' ')}</Badge></TableCell>
                     <TableCell>
                       <Badge variant={r.payment_status === 'unpaid' ? 'destructive' : 'orange'} className="capitalize">{r.payment_status}</Badge>
                     </TableCell>

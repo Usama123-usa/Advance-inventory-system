@@ -3,9 +3,14 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 
-// Products are global; stock/threshold live per-store in store_products.
-// The !inner hint means a product only shows up for a store if it has been
-// assigned to that store (a row exists in store_products for that pair).
+// Products are global; store_products records which stores carry a product
+// plus each store's own low_stock_threshold. stock itself is a shared pool —
+// every store_products row for a product holds the same value, kept in sync
+// by adjust_stock/create_sale/etc. (see sql/migration_shared_stock_pool.sql)
+// — so reading it scoped to req.storeId still always returns the current
+// pooled quantity. The !inner hint means a product only shows up for a
+// store if it has been assigned to that store (a row exists in
+// store_products for that pair).
 const PRODUCT_SELECT = '*, categories(name), store_products!inner(stock, low_stock_threshold, is_low_stock)';
 
 const flattenProduct = (product) => {
@@ -137,17 +142,20 @@ const buildProductPayload = (body) => {
 };
 
 // POST /api/products  (admin or store_manager)
-// Which stores a new product lands in depends entirely on the store the
-// caller is currently acting in (req.storeId) — never on their role:
+// Which stores a new product is ASSIGNED TO depends on the store the caller
+// is currently acting in (req.storeId) — never on their role:
 //   - Created while viewing the Main Store: fans out to every active store
-//     (Main + every sub-store) automatically, at zero stock everywhere
-//     except the Main Store (which gets the entered initial quantity).
+//     (Main + every sub-store) automatically.
 //   - Created while viewing a sub-store (a store_manager's own store, or an
 //     admin who has switched their view to a sub-store): stays in that one
-//     store only, at the entered initial quantity.
+//     store only.
 // A store_manager's store_id can never be the Main Store's (sub-stores are
 // only ever created via create_sub_store()), so this same check naturally
 // keeps them scoped to their own store without a separate role branch.
+// Stock itself is a shared pool: every store a product is assigned to holds
+// the SAME quantity (kept in sync by adjust_stock/create_sale/etc. — see
+// sql/migration_shared_stock_pool.sql), so every assigned row starts at the
+// entered initial quantity, not zero.
 const createProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
   const initialStock = Math.max(0, Number(req.body.quantity) || 0);
@@ -174,7 +182,7 @@ const createProduct = asyncHandler(async (req, res) => {
     storeProductRows = allStores.map((s) => ({
       store_id: s.id,
       product_id: product.id,
-      stock: s.id === currentStore.id ? initialStock : 0,
+      stock: initialStock,
       low_stock_threshold: lowStockThreshold,
     }));
   } else {
@@ -208,10 +216,12 @@ const createProduct = asyncHandler(async (req, res) => {
 });
 
 // PUT /api/products/:id  (admin or store_manager — edits global product
-// fields; storeIds here only ever ADDS new store assignments at zero stock
-// and is admin-only, it never removes an existing assignment. quantity, if
-// provided, sets stock for the caller's current store — req.storeId — via
-// the same atomic adjust_stock() RPC the Inventory page uses.)
+// fields; storeIds here only ever ADDS new store assignments (joining the
+// shared stock pool at its current value) and is admin-only, it never
+// removes an existing assignment. quantity, if provided, adjusts stock via
+// the same atomic adjust_stock() RPC the Inventory page uses — which now
+// applies the change to every store carrying this product, not just
+// req.storeId's row (see sql/migration_shared_stock_pool.sql).)
 const updateProduct = asyncHandler(async (req, res) => {
   const payload = buildProductPayload(req.body);
 
@@ -252,18 +262,21 @@ const updateProduct = asyncHandler(async (req, res) => {
 
   const storeIds = req.user.role === 'admin' && Array.isArray(req.body.storeIds) ? req.body.storeIds.filter(Boolean) : [];
   if (storeIds.length) {
+    // Need every existing assignment's stock (not just which stores are
+    // already assigned) — stock is a shared pool, so a newly-added store
+    // joins at whatever the pool currently holds, not zero.
     const { data: existingRows, error: existingError } = await supabase
       .from('store_products')
-      .select('store_id')
-      .eq('product_id', req.params.id)
-      .in('store_id', storeIds);
+      .select('store_id, stock')
+      .eq('product_id', req.params.id);
 
     assertNoSupabaseError(existingError, 'Failed to check store assignment');
 
     const alreadyAssigned = new Set((existingRows || []).map((row) => row.store_id));
+    const currentPoolStock = existingRows?.[0]?.stock ?? 0;
     const newRows = storeIds
       .filter((storeId) => !alreadyAssigned.has(storeId))
-      .map((storeId) => ({ store_id: storeId, product_id: req.params.id, stock: 0 }));
+      .map((storeId) => ({ store_id: storeId, product_id: req.params.id, stock: currentPoolStock }));
 
     if (newRows.length) {
       const { error: insertError } = await supabase.from('store_products').insert(newRows);
