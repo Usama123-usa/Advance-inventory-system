@@ -67,9 +67,20 @@ const emptyForm = {
 // Memoized row — with stable onEdit/onDeleteRequest callbacks from the
 // parent, unrelated row updates (e.g. editing a different product) skip
 // re-rendering every other row in the table.
-const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProducts, onEdit, onDeleteRequest }) {
+const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProducts, selected, onToggleSelect, onEdit, onDeleteRequest }) {
   return (
     <TableRow>
+      {isAdmin && (
+        <TableCell>
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border"
+            checked={selected}
+            onChange={() => onToggleSelect(product.id)}
+            aria-label={`Select ${product.name}`}
+          />
+        </TableCell>
+      )}
       <TableCell>
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary text-muted-foreground">
@@ -136,6 +147,10 @@ export default function Products() {
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Plain (uncached) fetch — Categories.jsx writes are uncached too, and
   // since this page unmounts/remounts on every navigation, a freshly added
@@ -218,6 +233,27 @@ export default function Products() {
 
   useEffect(() => setPage(1), [debouncedSearch, categoryFilter, statusFilter]);
 
+  useEffect(() => setSelectedIds(new Set()), [debouncedSearch, categoryFilter, statusFilter, page]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allOnPageSelected = products.length > 0 && products.every((p) => selectedIds.has(p.id));
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (allOnPageSelected) return new Set();
+      const next = new Set(prev);
+      products.forEach((p) => next.add(p.id));
+      return next;
+    });
+  };
+
   const resetForm = () => setForm(emptyForm);
 
   const openCreate = () => {
@@ -297,6 +333,21 @@ export default function Products() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      await api.post('/products/bulk-delete', { ids: Array.from(selectedIds) });
+      toast.success('Products permanently deleted');
+      setBulkDeleteOpen(false);
+      setSelectedIds(new Set());
+      fetchProducts();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -304,9 +355,16 @@ export default function Products() {
         description={canManageProducts ? 'Manage your product catalog' : 'View products and stock for your store'}
         actions={
           canManageProducts && (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add Product
-            </Button>
+            <>
+              {isAdmin && (
+                <Button variant="destructive" onClick={() => setBulkDeleteOpen(true)} disabled={selectedIds.size === 0}>
+                  <Trash2 className="h-4 w-4" /> Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+                </Button>
+              )}
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add Product
+              </Button>
+            </>
           )
         }
       />
@@ -360,6 +418,17 @@ export default function Products() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {isAdmin && (
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={allOnPageSelected}
+                        onChange={toggleSelectAll}
+                        aria-label="Select all products on this page"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Product</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Details</TableHead>
@@ -375,6 +444,8 @@ export default function Products() {
                     product={p}
                     isAdmin={isAdmin}
                     canManageProducts={canManageProducts}
+                    selected={selectedIds.has(p.id)}
+                    onToggleSelect={toggleSelect}
                     onEdit={openEdit}
                     onDeleteRequest={handleDeleteRequest}
                   />
@@ -546,6 +617,15 @@ export default function Products() {
         description={`"${deleteTarget?.name}" and its history will be permanently removed from the database. This cannot be undone.`}
         loading={deleting}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title="Permanently delete selected products?"
+        description={`${selectedIds.size} product(s) and their history will be permanently removed from the database. This cannot be undone.`}
+        loading={bulkDeleting}
+        onConfirm={handleBulkDelete}
       />
     </div>
   );

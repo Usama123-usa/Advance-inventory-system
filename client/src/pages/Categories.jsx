@@ -36,6 +36,10 @@ export default function Categories() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const fetchCategories = useCallback(async () => {
     setLoading(true);
     try {
@@ -54,6 +58,27 @@ export default function Categories() {
   }, [fetchCategories]);
 
   useEffect(() => setPage(1), [debouncedSearch]);
+
+  useEffect(() => setSelectedIds(new Set()), [debouncedSearch, page]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allOnPageSelected = categories.length > 0 && categories.every((c) => selectedIds.has(c.id));
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (allOnPageSelected) return new Set();
+      const next = new Set(prev);
+      categories.forEach((c) => next.add(c.id));
+      return next;
+    });
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -101,15 +126,35 @@ export default function Categories() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      await api.post('/categories/bulk-delete', { ids: Array.from(selectedIds) });
+      toast.success('Categories deleted');
+      setBulkDeleteOpen(false);
+      setSelectedIds(new Set());
+      fetchCategories();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Categories"
         description="Organize your products into categories"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Category
-          </Button>
+          <>
+            <Button variant="destructive" onClick={() => setBulkDeleteOpen(true)} disabled={selectedIds.size === 0}>
+              <Trash2 className="h-4 w-4" /> Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add Category
+            </Button>
+          </>
         }
       />
 
@@ -144,6 +189,15 @@ export default function Categories() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all categories on this page"
+                    />
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Description</TableHead>
@@ -155,6 +209,15 @@ export default function Categories() {
               <TableBody>
                 {categories.map((cat) => (
                   <TableRow key={cat.id}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={selectedIds.has(cat.id)}
+                        onChange={() => toggleSelect(cat.id)}
+                        aria-label={`Select ${cat.name}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{cat.name}</TableCell>
                     <TableCell>
                       <Badge variant={cat.type === 'tiles' ? 'default' : 'secondary'} className="capitalize">
@@ -259,6 +322,15 @@ export default function Categories() {
         description={`"${deleteTarget?.name}" will be permanently removed. Products in this category will become uncategorized.`}
         loading={deleting}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title="Delete selected categories?"
+        description={`${selectedIds.size} categor${selectedIds.size === 1 ? 'y' : 'ies'} will be permanently removed. Products in these categories will become uncategorized.`}
+        loading={bulkDeleting}
+        onConfirm={handleBulkDelete}
       />
     </div>
   );

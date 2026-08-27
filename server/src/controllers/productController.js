@@ -296,6 +296,17 @@ const deleteProduct = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Product permanently deleted' });
 });
 
+// POST /api/products/bulk-delete  { ids: [] }  -- permanent hard delete of
+// multiple products in one request (same semantics as deleteProduct above).
+const bulkDeleteProducts = asyncHandler(async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.filter(Boolean) : [];
+  if (!ids.length) throw new ApiError(400, 'No product ids provided');
+
+  const { data, error } = await supabase.from('products').delete().in('id', ids).select('id');
+  assertNoSupabaseError(error, 'Failed to delete products');
+  res.json({ success: true, message: `${data.length} product(s) permanently deleted` });
+});
+
 module.exports = {
   getProducts,
   getProductById,
@@ -303,4 +314,5 @@ module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
+  bulkDeleteProducts,
 };

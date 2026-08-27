@@ -177,7 +177,7 @@ const getStockReturns = asyncHandler(async (req, res) => {
 
   const { data, error, count } = await supabase
     .from('stock_returns')
-    .select('id, reason, created_at, users(name), stock_return_items(quantity, unit, products(name))', { count: 'exact' })
+    .select('id, reason, created_at, users(name), stock_return_items(product_name, quantity, unit, products(name))', { count: 'exact' })
     .eq('store_id', req.storeId)
     .order('created_at', { ascending: false })
     .range(from, to);
@@ -192,7 +192,10 @@ const getStockReturns = asyncHandler(async (req, res) => {
       items: (stock_return_items || []).map((item) => ({
         quantity: item.quantity,
         unit: item.unit,
-        product_name: item.products?.name || null,
+        // Prefer the live product name; fall back to the denormalized
+        // snapshot for products that have since been permanently deleted
+        // (stock_return_items.product_id is ON DELETE SET NULL).
+        product_name: item.products?.name || item.product_name || null,
       })),
     };
   });

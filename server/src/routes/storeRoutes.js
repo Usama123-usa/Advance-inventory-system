@@ -25,5 +25,6 @@ router.post(
 
 router.put('/:id', storeController.updateStore);
 router.delete('/:id', storeController.deleteStore);
+router.delete('/:id/permanent', storeController.permanentlyDeleteStore);
 
 module.exports = router;

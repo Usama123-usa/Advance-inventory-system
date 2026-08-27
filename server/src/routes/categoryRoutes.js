@@ -21,5 +21,6 @@ router.post('/', categoryValidation, validate, categoryController.createCategory
 router.put('/:id', categoryValidation, validate, categoryController.updateCategory);
 
 router.delete('/:id', categoryController.deleteCategory);
+router.post('/bulk-delete', categoryController.bulkDeleteCategories);
 
 module.exports = router;

@@ -81,4 +81,14 @@ const deleteCategory = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Category deleted successfully' });
 });
 
-module.exports = { getCategories, getCategoryById, createCategory, updateCategory, deleteCategory };
+// POST /api/categories/bulk-delete  { ids: [] }
+const bulkDeleteCategories = asyncHandler(async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.filter(Boolean) : [];
+  if (!ids.length) throw new ApiError(400, 'No category ids provided');
+
+  const { data, error } = await supabase.from('categories').delete().in('id', ids).select('id');
+  assertNoSupabaseError(error, 'Failed to delete categories');
+  res.json({ success: true, message: `${data.length} categor${data.length === 1 ? 'y' : 'ies'} deleted successfully` });
+});
+
+module.exports = { getCategories, getCategoryById, createCategory, updateCategory, deleteCategory, bulkDeleteCategories };

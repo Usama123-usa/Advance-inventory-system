@@ -106,4 +106,32 @@ const deleteStore = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Store archived successfully' });
 });
 
-module.exports = { getStores, getStoreById, createStore, updateStore, deleteStore };
+// DELETE /api/stores/:id/permanent  -- true hard delete, separate from the
+// existing Active/Archive toggle above. sales.store_id and
+// inventory_logs.store_id are ON DELETE SET NULL (see
+// sql/migration_2026-08-27_store_delete_history.sql) so that history is
+// detached rather than blocking the delete. users.store_id has no cascade
+// either, but every store always has at least its manager user assigned
+// (create_sub_store sets that up), so it's detached the same way here.
+const permanentlyDeleteStore = asyncHandler(async (req, res) => {
+  const { data: existing, error: fetchError } = await supabase
+    .from('stores')
+    .select('id, name, is_main')
+    .eq('id', req.params.id)
+    .maybeSingle();
+
+  assertNoSupabaseError(fetchError, 'Failed to load store');
+  if (!existing) throw new ApiError(404, 'Store not found');
+  if (existing.is_main) throw new ApiError(400, 'The Main Store cannot be deleted');
+
+  const { error: detachError } = await supabase.from('users').update({ store_id: null }).eq('store_id', req.params.id);
+  assertNoSupabaseError(detachError, 'Failed to unassign staff from this store');
+
+  const { error } = await supabase.from('stores').delete().eq('id', req.params.id);
+  assertNoSupabaseError(error, 'Failed to delete store');
+  cache.del(`store:${req.params.id}`);
+
+  res.json({ success: true, message: 'Store permanently deleted' });
+});
+
+module.exports = { getStores, getStoreById, createStore, updateStore, deleteStore, permanentlyDeleteStore };

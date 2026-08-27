@@ -23,5 +23,6 @@ router.get('/:id', productController.getProductById);
 router.post('/', requireRole('admin', 'store_manager'), productValidation, validate, productController.createProduct);
 router.put('/:id', requireRole('admin', 'store_manager'), productValidation, validate, productController.updateProduct);
 router.delete('/:id', requireRole('admin'), productController.deleteProduct);
+router.post('/bulk-delete', requireRole('admin'), productController.bulkDeleteProducts);
 
 module.exports = router;

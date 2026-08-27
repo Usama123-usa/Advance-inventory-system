@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Pencil, Archive, Building2, ShieldCheck } from 'lucide-react';
+import { Plus, Pencil, Archive, Trash2, Building2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useStore } from '@/context/StoreContext';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Card } from '@/components/ui/Card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -33,6 +33,10 @@ export default function StoreManagement() {
 
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [archiving, setArchiving] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteNameInput, setDeleteNameInput] = useState('');
 
   const fetchStores = useCallback(async () => {
     setLoading(true);
@@ -116,6 +120,29 @@ export default function StoreManagement() {
     }
   };
 
+  const closeDeleteDialog = () => {
+    setDeleteTarget(null);
+    setDeleteNameInput('');
+  };
+
+  const deleteNameMatches = !!deleteTarget && deleteNameInput === deleteTarget.name;
+
+  const handleDelete = async () => {
+    if (!deleteNameMatches) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/stores/${deleteTarget.id}/permanent`);
+      toast.success('Store permanently deleted');
+      closeDeleteDialog();
+      fetchStores();
+      refreshStores(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -164,6 +191,19 @@ export default function StoreManagement() {
                       {!store.is_main && (
                         <Button variant="ghost" size="icon" onClick={() => (store.is_active ? setArchiveTarget(store) : toggleActive(store))}>
                           <Archive className={store.is_active ? 'h-4 w-4 text-destructive' : 'h-4 w-4 text-success'} />
+                        </Button>
+                      )}
+                      {!store.is_main && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setDeleteTarget(store);
+                            setDeleteNameInput('');
+                          }}
+                          title="Delete store"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                     </div>
@@ -233,6 +273,49 @@ export default function StoreManagement() {
         loading={archiving}
         onConfirm={handleArchive}
       />
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && closeDeleteDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <DialogTitle>Permanently delete this store?</DialogTitle>
+            </div>
+            <DialogDescription className="pl-[52px]">
+              This cannot be undone. To confirm, type the store name{' '}
+              <span className="font-semibold text-foreground">"{deleteTarget?.name}"</span> below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>Store Name</Label>
+            <Input
+              value={deleteNameInput}
+              onChange={(e) => setDeleteNameInput(e.target.value)}
+              placeholder={deleteTarget?.name}
+              autoComplete="off"
+            />
+            {deleteNameInput && !deleteNameMatches && (
+              <p className="text-xs text-destructive">Store name does not match.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={!deleteNameMatches}
+              loading={deleting}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
