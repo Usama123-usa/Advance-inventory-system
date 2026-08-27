@@ -131,7 +131,7 @@ export default function Products() {
   const { isAdmin, isStoreManager } = useAuth();
   const canManageProducts = isAdmin || isStoreManager;
   const { stores, currentStore } = useStore();
-  const subStores = stores.filter((s) => !s.is_main && s.is_active);
+  const activeStores = stores.filter((s) => s.is_active);
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -258,11 +258,11 @@ export default function Products() {
     });
   };
 
-  const resetForm = () => setForm(emptyForm);
-
   const openCreate = () => {
     setEditing(null);
-    resetForm();
+    // Every active store is selected by default — the product is assigned
+    // to all of them unless the user manually deselects one.
+    setForm({ ...emptyForm, storeIds: activeStores.map((s) => s.id) });
     setDialogOpen(true);
   };
 
@@ -300,6 +300,14 @@ export default function Products() {
     setForm((f) => ({
       ...f,
       storeIds: f.storeIds.includes(storeId) ? f.storeIds.filter((id) => id !== storeId) : [...f.storeIds, storeId],
+    }));
+  };
+
+  const allActiveStoresSelected = activeStores.length > 0 && activeStores.every((s) => form.storeIds.includes(s.id));
+  const toggleSelectAllStores = () => {
+    setForm((f) => ({
+      ...f,
+      storeIds: allActiveStoresSelected ? [] : activeStores.map((s) => s.id),
     }));
   };
 
@@ -584,13 +592,26 @@ export default function Products() {
                   <Label>Description</Label>
                   <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                 </div>
-                {editing && isAdmin && subStores.length > 0 && (
+                {isAdmin && activeStores.length > 0 && (
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label>
-                      Also assign to additional stores <span className="text-xs font-normal text-muted-foreground">(optional — adds this product at zero stock; does not remove it from any store)</span>
+                      {editing ? (
+                        <>Also assign to additional stores <span className="text-xs font-normal text-muted-foreground">(optional — adds this product at zero stock; does not remove it from any store)</span></>
+                      ) : (
+                        <>Assign to Stores <span className="text-xs font-normal text-muted-foreground">(all active stores are selected by default — uncheck a store to exclude this product from it)</span></>
+                      )}
                     </Label>
                     <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-border p-3">
-                      {subStores.map((s) => (
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={allActiveStoresSelected}
+                          onChange={toggleSelectAllStores}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        Select All
+                      </label>
+                      {activeStores.map((s) => (
                         <label key={s.id} className="flex items-center gap-2 text-sm">
                           <input
                             type="checkbox"
@@ -598,7 +619,7 @@ export default function Products() {
                             onChange={() => toggleStoreId(s.id)}
                             className="h-4 w-4 rounded border-border"
                           />
-                          {s.name}
+                          {s.name || 'Unnamed store'}
                         </label>
                       ))}
                     </div>

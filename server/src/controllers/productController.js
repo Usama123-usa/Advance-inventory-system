@@ -146,16 +146,18 @@ const buildProductPayload = (body) => {
 };
 
 // POST /api/products  (admin or store_manager)
-// Which stores a new product is ASSIGNED TO depends on the store the caller
-// is currently acting in (req.storeId) — never on their role:
-//   - Created while viewing the Main Store: fans out to every active store
-//     (Main + every sub-store) automatically.
-//   - Created while viewing a sub-store (a store_manager's own store, or an
-//     admin who has switched their view to a sub-store): stays in that one
-//     store only.
-// A store_manager's store_id can never be the Main Store's (sub-stores are
-// only ever created via create_sub_store()), so this same check naturally
-// keeps them scoped to their own store without a separate role branch.
+// Which stores a new product is ASSIGNED TO:
+//   - Admin, with storeIds sent (the Add Product form's store-selection
+//     checklist, defaulted to every active store): assigned to exactly
+//     those active stores, always including the store the admin is
+//     currently acting in (req.storeId) even if it was left unchecked.
+//   - Anyone else (store_manager, or an admin request with no storeIds —
+//     e.g. an older client): falls back to the original rule — created
+//     while viewing the Main Store fans out to every active store, created
+//     while viewing a sub-store stays scoped to just that store. A
+//     store_manager's store_id can never be the Main Store's (sub-stores
+//     are only ever created via create_sub_store()), so this naturally
+//     keeps them scoped to their own store without a separate role branch.
 // Stock itself is a shared pool: every store a product is assigned to holds
 // the SAME quantity (kept in sync by adjust_stock/create_sale/etc. — see
 // sql/migration_shared_stock_pool.sql), so every assigned row starts at the
@@ -177,28 +179,30 @@ const createProduct = asyncHandler(async (req, res) => {
   const { data: product, error } = await supabase.from('products').insert(payload).select('*').single();
   assertNoSupabaseError(error, 'Failed to create product');
 
-  let storeProductRows;
+  let targetStoreIds;
 
-  if (currentStore.is_main) {
+  if (req.user.role === 'admin' && Array.isArray(req.body.storeIds)) {
     const { data: allStores, error: allStoresError } = await supabase.from('stores').select('id').eq('is_active', true);
     assertNoSupabaseError(allStoresError, 'Failed to load stores');
 
-    storeProductRows = allStores.map((s) => ({
-      store_id: s.id,
-      product_id: product.id,
-      stock: initialStock,
-      low_stock_threshold: lowStockThreshold,
-    }));
+    const activeStoreIds = new Set(allStores.map((s) => s.id));
+    const chosen = new Set(req.body.storeIds.filter((id) => activeStoreIds.has(id)));
+    chosen.add(currentStore.id);
+    targetStoreIds = Array.from(chosen);
+  } else if (currentStore.is_main) {
+    const { data: allStores, error: allStoresError } = await supabase.from('stores').select('id').eq('is_active', true);
+    assertNoSupabaseError(allStoresError, 'Failed to load stores');
+    targetStoreIds = allStores.map((s) => s.id);
   } else {
-    storeProductRows = [
-      {
-        store_id: currentStore.id,
-        product_id: product.id,
-        stock: initialStock,
-        low_stock_threshold: lowStockThreshold,
-      },
-    ];
+    targetStoreIds = [currentStore.id];
   }
+
+  const storeProductRows = targetStoreIds.map((storeId) => ({
+    store_id: storeId,
+    product_id: product.id,
+    stock: initialStock,
+    low_stock_threshold: lowStockThreshold,
+  }));
 
   const { error: spError } = await supabase.from('store_products').insert(storeProductRows);
   assertNoSupabaseError(spError, 'Failed to assign product to stores');
