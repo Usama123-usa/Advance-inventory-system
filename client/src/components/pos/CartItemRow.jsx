@@ -18,6 +18,23 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
   const sqmMultiplier = Number(item.square_meter) || 1;
   const lineTotal = (Number(item.price) || 0) * item.qty * sqmMultiplier;
 
+  // Dynamic box-equivalent readout using the product's existing "Quantity
+  // per Box" value (packing_per_box) — e.g. 15 units at 6/box → "2 boxes +
+  // 3 units". Only shown when the product actually has that value set.
+  const perBox = Number(item.packing_per_box);
+  let boxEquivalent = null;
+  if (perBox > 0) {
+    const boxes = Math.floor(item.qty / perBox);
+    const remainder = item.qty % perBox;
+    if (boxes === 0) {
+      boxEquivalent = `${remainder} unit${remainder === 1 ? '' : 's'}`;
+    } else if (remainder === 0) {
+      boxEquivalent = `${boxes} box${boxes === 1 ? '' : 'es'}`;
+    } else {
+      boxEquivalent = `${boxes} box${boxes === 1 ? '' : 'es'} + ${remainder} unit${remainder === 1 ? '' : 's'}`;
+    }
+  }
+
   // Buffers in-progress typing locally so the field can be cleared/retyped
   // freely; only pushes a valid positive integer up to the cart (which keeps
   // cart.qty always a clean number, never a stray string from a half-typed
@@ -43,28 +60,36 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
 
   return (
     <div className="space-y-3 py-5">
-      <div className="min-w-0">
-        <p className="truncate text-base font-medium">{item.name}</p>
-        {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-base font-medium">{item.name}</p>
+          {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+        </div>
+        <button onClick={() => onRemove(item.id)} className="shrink-0 text-muted-foreground hover:text-destructive">
+          <Trash2 className="h-5 w-5" />
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2 rounded-lg border border-border">
-          <button onClick={() => onDecrease(item.id)} className="flex h-10 w-10 items-center justify-center text-muted-foreground hover:text-foreground">
-            <Minus className="h-4 w-4" />
-          </button>
-          <input
-            type="number"
-            min="1"
-            inputMode="numeric"
-            value={qtyText}
-            onChange={handleQtyInput}
-            onBlur={handleQtyBlur}
-            className="h-10 w-14 rounded border-0 bg-transparent text-center text-base font-medium focus:outline-none focus-visible:ring-1 focus-visible:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          />
-          <button onClick={() => onIncrease(item.id)} className="flex h-10 w-10 items-center justify-center text-muted-foreground hover:text-foreground">
-            <Plus className="h-4 w-4" />
-          </button>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 rounded-lg border border-border">
+            <button onClick={() => onDecrease(item.id)} className="flex h-10 w-10 items-center justify-center text-muted-foreground hover:text-foreground">
+              <Minus className="h-4 w-4" />
+            </button>
+            <input
+              type="number"
+              min="1"
+              inputMode="numeric"
+              value={qtyText}
+              onChange={handleQtyInput}
+              onBlur={handleQtyBlur}
+              className="h-10 w-14 rounded border-0 bg-transparent text-center text-base font-medium focus:outline-none focus-visible:ring-1 focus-visible:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <button onClick={() => onIncrease(item.id)} className="flex h-10 w-10 items-center justify-center text-muted-foreground hover:text-foreground">
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          {boxEquivalent && <span className="text-xs text-muted-foreground">{boxEquivalent}</span>}
         </div>
 
         <div className="flex flex-col items-end gap-1">
@@ -86,10 +111,6 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
           <span className="text-xs text-muted-foreground">Total: {formatCurrency(lineTotal, currency)}</span>
         </div>
       </div>
-
-      <button onClick={() => onRemove(item.id)} className="text-muted-foreground hover:text-destructive">
-        <Trash2 className="h-5 w-5" />
-      </button>
     </div>
   );
 }
