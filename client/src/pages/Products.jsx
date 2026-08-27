@@ -29,9 +29,12 @@ const TILE_OPTION_FIELDS = [
   { key: 'sqr_meter', formKey: 'sqrMeter', label: 'SQR Meter per Box', type: 'number' },
   { key: 'packing_per_box', formKey: 'packingPerBox', label: 'Packing / Tiles per Box', type: 'number' },
   { key: 'rate_per_meter', formKey: 'ratePerMeter', label: 'Rate per Meter', type: 'number' },
+  // Per-unit square meter used at POS time to compute
+  // Total = Quantity × Price × Square Meter (see CartItemRow.jsx/POS.jsx).
+  { key: 'square_meter', formKey: 'squareMeter', label: 'Square Meter (m²)', type: 'number' },
 ];
 
-const emptyTileOptions = { size: [], glaze_mate: [], sqr_meter: [], packing_per_box: [], rate_per_meter: [] };
+const emptyTileOptions = { size: [], glaze_mate: [], sqr_meter: [], packing_per_box: [], rate_per_meter: [], square_meter: [] };
 
 const UNIT_OPTIONS = [
   { value: 'kg', label: 'Kg' },
@@ -58,6 +61,7 @@ const emptyForm = {
   sqrMeter: '',
   packingPerBox: '',
   ratePerMeter: '',
+  squareMeter: '',
   // Other form
   article: '',
   company: '',
@@ -278,6 +282,7 @@ export default function Products() {
       sqrMeter: product.sqr_meter != null ? String(product.sqr_meter) : '',
       packingPerBox: product.packing_per_box != null ? String(product.packing_per_box) : '',
       ratePerMeter: product.rate_per_meter != null ? String(product.rate_per_meter) : '',
+      squareMeter: product.square_meter != null ? String(product.square_meter) : '',
       article: product.article || '',
       company: product.company || '',
       unit: product.unit || 'pcs',
@@ -513,7 +518,7 @@ export default function Products() {
                       />
                     ))}
                     <div className="space-y-1.5">
-                      <Label>Quantity (boxes) {editing && <span className="text-xs text-muted-foreground">(updates stock for your current store)</span>}</Label>
+                      <Label>Quantity (unit) {editing && <span className="text-xs text-muted-foreground">(updates stock for your current store)</span>}</Label>
                       <Input type="number" min="0" required value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
                     </div>
                   </>

@@ -11,7 +11,12 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
   const subtitle = isTiles
     ? [item.size, item.glaze_grade].filter(Boolean).join(' · ')
     : [item.company, item.article].filter(Boolean).join(' · ');
-  const lineTotal = (Number(item.price) || 0) * item.qty;
+  // For tiles with a Square Meter (m²) set, Total = Quantity × Price × Square
+  // Meter; everything else keeps the plain Quantity × Price it always had
+  // (square_meter is null/unset for non-tile products, so the multiplier
+  // defaults to 1 and this formula reduces to the original one).
+  const sqmMultiplier = Number(item.square_meter) || 1;
+  const lineTotal = (Number(item.price) || 0) * item.qty * sqmMultiplier;
 
   // Buffers in-progress typing locally so the field can be cleared/retyped
   // freely; only pushes a valid positive integer up to the cart (which keeps

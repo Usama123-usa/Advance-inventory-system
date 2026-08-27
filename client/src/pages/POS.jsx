@@ -147,7 +147,9 @@ export default function POS() {
   const removeFromCart = useCallback((productId) => setCart((prev) => prev.filter((i) => i.id !== productId)), []);
 
   const { subtotal, discountAmount, taxAmount, grandTotal } = useMemo(() => {
-    const sub = cart.reduce((sum, i) => sum + (Number(i.price) || 0) * i.qty, 0);
+    // Mirrors CartItemRow's per-line total: Quantity × Price × Square Meter
+    // for tiles with square_meter set, otherwise plain Quantity × Price.
+    const sub = cart.reduce((sum, i) => sum + (Number(i.price) || 0) * i.qty * (Number(i.square_meter) || 1), 0);
     // A negative discount must never raise the total, so it's clamped here
     // in addition to being stripped from the input as the user types.
     const discountAmt = Math.max(Number(discount) || 0, 0);
@@ -207,7 +209,12 @@ export default function POS() {
       const { data } = await api.post('/sales', {
         invoiceNumber: invoiceNumber.trim(),
         customerId: customerId === 'walk-in' ? null : customerId,
-        items: cart.map((i) => ({ productId: i.id, quantity: i.qty, unitPrice: Number(i.price) })),
+        // unitPrice sent to the backend is the effective per-unit price
+        // (Price × Square Meter for tiles) so the invoice total the server
+        // computes (unitPrice × quantity) matches what the cart showed —
+        // the server itself is unchanged, it still just does unitPrice × qty
+        // and deducts stock by the raw quantity (units) sold.
+        items: cart.map((i) => ({ productId: i.id, quantity: i.qty, unitPrice: Number(i.price) * (Number(i.square_meter) || 1) })),
         discount: discountAmount,
         paymentMethod,
         paidAmount: amountPaid === '' ? undefined : Number(amountPaid),

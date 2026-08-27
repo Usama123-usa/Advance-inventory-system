@@ -55,7 +55,7 @@ export function Sidebar({ open, onClose }) {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30">
               <Store className="h-[18px] w-[18px]" />
             </div>
-            <span>InventoryPro</span>
+            <span>Madni Tile</span>
           </div>
           <button onClick={onClose} className="rounded-md p-1 text-sidebar-muted hover:bg-black/5 hover:text-sidebar-foreground dark:hover:bg-white/5 lg:hidden">
             <X className="h-5 w-5" />

@@ -104,6 +104,7 @@ const buildProductPayload = (body) => {
 
   const sqrMeter = isTiles ? numOrNull(body.sqrMeter) : null;
   const ratePerMeter = isTiles ? numOrNull(body.ratePerMeter) : null;
+  const squareMeter = isTiles ? numOrNull(body.squareMeter) : null;
 
   return {
     name: body.name.trim(),
@@ -116,12 +117,12 @@ const buildProductPayload = (body) => {
     // saved on sale_items instead. This column is kept (defaulted to 0) so
     // existing rows and reports referencing it don't break.
     selling_price: Number(body.sellingPrice) || 0,
-    // Tiles keep a fixed 'box' unit (sqr-meter/rate-per-meter pricing is
-    // built around it). Everything else uses the Unit field from the form
-    // (Kg/Gram/Liter/Piece/Box/Dozen/Pcs/...) when provided, falling back to
-    // the legacy box/pcs unitType toggle for any older caller that still
-    // only sends that.
-    unit: isTiles ? 'box' : body.unit?.trim() || (isOther && body.unitType === 'pcs' ? 'pcs' : isOther ? 'box' : 'pcs'),
+    // Tiles are sold and tracked by 'unit' (each unit's own square-meter
+    // coverage drives the POS price calc — see square_meter below).
+    // Everything else uses the Unit field from the form (Kg/Gram/Liter/
+    // Piece/Box/Dozen/Pcs/...) when provided, falling back to the legacy
+    // box/pcs unitType toggle for any older caller that still only sends that.
+    unit: isTiles ? 'unit' : body.unit?.trim() || (isOther && body.unitType === 'pcs' ? 'pcs' : isOther ? 'box' : 'pcs'),
     description: body.description || null,
     status: body.status || 'active',
     product_type: productType,
@@ -130,6 +131,9 @@ const buildProductPayload = (body) => {
     sqr_meter: sqrMeter,
     packing_per_box: isTiles ? numOrNull(body.packingPerBox) : null,
     rate_per_meter: ratePerMeter,
+    // Square meters covered by one unit — used at POS time to compute
+    // Total = Quantity × Price × Square Meter (see POS.jsx/CartItemRow.jsx).
+    square_meter: squareMeter,
     article: isOther ? body.article?.trim() || null : null,
     company: isOther ? body.company?.trim() || null : null,
     // unit_type is no longer form-editable directly — kept populated as a

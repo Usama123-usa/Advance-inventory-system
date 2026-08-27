@@ -3,7 +3,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 
-const FIELD_NAMES = ['size', 'glaze_mate', 'sqr_meter', 'packing_per_box', 'rate_per_meter'];
+const FIELD_NAMES = ['size', 'glaze_mate', 'sqr_meter', 'packing_per_box', 'rate_per_meter', 'square_meter'];
 
 // GET /api/tile-options  (all fields) or /api/tile-options?field=size (one field)
 const getTileOptions = asyncHandler(async (req, res) => {

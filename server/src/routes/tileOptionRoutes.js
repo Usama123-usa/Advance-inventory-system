@@ -18,7 +18,7 @@ router.post(
   requireRole('admin', 'store_manager'),
   [
     body('fieldName')
-      .isIn(['size', 'glaze_mate', 'sqr_meter', 'packing_per_box', 'rate_per_meter'])
+      .isIn(['size', 'glaze_mate', 'sqr_meter', 'packing_per_box', 'rate_per_meter', 'square_meter'])
       .withMessage('Invalid field name'),
     body('value').trim().notEmpty().withMessage('Option value is required'),
   ],

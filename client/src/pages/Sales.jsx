@@ -54,6 +54,8 @@ export default function Sales() {
 
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnSaleId, setReturnSaleId] = useState(null);
 
@@ -112,6 +114,23 @@ export default function Sales() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(Array.from(selectedIds).map((id) => api.delete(`/sales/${id}`)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      const succeeded = results.length - failed;
+      if (succeeded > 0) toast.success(`${succeeded} sale(s) deleted — stock restored`);
+      if (failed > 0) toast.error(`${failed} sale(s) could not be deleted`);
+      setBulkDeleteOpen(false);
+      setSelectedIds(new Set());
+      fetchSales();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const toggleSelect = (id) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -166,6 +185,11 @@ export default function Sales() {
             <Button onClick={handleDownloadSelected} loading={downloading} disabled={selectedIds.size === 0}>
               <Download className="h-4 w-4" /> Download{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
             </Button>
+            {isAdmin && (
+              <Button variant="destructive" onClick={() => setBulkDeleteOpen(true)} disabled={selectedIds.size === 0}>
+                <Trash2 className="h-4 w-4" /> Delete Selected{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+              </Button>
+            )}
           </>
         }
       />
@@ -291,6 +315,21 @@ export default function Sales() {
         }
         loading={deleting}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title="Delete selected sales?"
+        description={(() => {
+          const selected = sales.filter((s) => selectedIds.has(s.id));
+          const preview = selected.slice(0, 5).map((s) => s.invoice_number).join(', ');
+          const remaining = selected.length - 5;
+          const names = remaining > 0 ? `${preview}, and ${remaining} more` : preview;
+          return `Invoice${selected.length === 1 ? '' : 's'} ${names} will be permanently removed, stock restored, and any outstanding balance reversed. This cannot be undone.`;
+        })()}
+        loading={bulkDeleting}
+        onConfirm={handleBulkDelete}
       />
 
       <SalesReturnDialog
