@@ -38,13 +38,9 @@ const TILE_OPTION_FIELDS = [
 const emptyTileOptions = { size: [], glaze_mate: [], sqr_meter: [], packing_per_box: [], rate_per_meter: [], square_meter: [] };
 
 const UNIT_OPTIONS = [
-  { value: 'kg', label: 'Kg' },
-  { value: 'gram', label: 'Gram' },
-  { value: 'liter', label: 'Liter' },
-  { value: 'piece', label: 'Piece' },
-  { value: 'box', label: 'Box' },
-  { value: 'dozen', label: 'Dozen' },
-  { value: 'pcs', label: 'Pcs' },
+  { value: 'pcs', label: 'PCS' },
+  { value: 'box', label: 'BOX' },
+  { value: 'other', label: 'OTHER' },
 ];
 
 const emptyForm = {
@@ -66,7 +62,7 @@ const emptyForm = {
   // Other form
   article: '',
   company: '',
-  unit: 'Pcs',
+  unit: 'pcs',
 };
 
 // Memoized row — with stable onEdit/onDeleteRequest callbacks from the
@@ -287,7 +283,11 @@ export default function Products() {
       squareMeter: product.square_meter != null ? String(product.square_meter) : '',
       article: product.article || '',
       company: product.company || '',
-      unit: product.unit || 'pcs',
+      // Older products may still carry a pre-simplification unit (kg, gram,
+      // liter, dozen, piece, ...) that no longer has a matching dropdown
+      // option — fall back to "Other" so the field shows a valid selection
+      // instead of appearing blank.
+      unit: UNIT_OPTIONS.some((u) => u.value === product.unit) ? product.unit : 'other',
     });
     setDialogOpen(true);
   }, []);
