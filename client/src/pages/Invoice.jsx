@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { generateInvoicePdf } from '@/lib/generateInvoicePdf';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 
 const PAYMENT_STATUS_VARIANT = { paid: 'success', partial: 'orange', unpaid: 'destructive' };
 
@@ -80,7 +80,7 @@ export default function Invoice() {
           <div className="text-right">
             <h2 className="text-xl font-bold text-primary">INVOICE</h2>
             <p className="mt-1 text-sm text-muted-foreground">#{sale.invoice_number}</p>
-            <p className="text-sm text-muted-foreground">{formatDateTime(sale.created_at)}</p>
+            <p className="text-sm text-muted-foreground">{formatDate(sale.sale_date || sale.created_at)}</p>
           </div>
         </div>
 

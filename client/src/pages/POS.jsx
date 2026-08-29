@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ScanBarcode, ShoppingCart, Trash2, Banknote, CreditCard, Landmark, Hash } from 'lucide-react';
+import { Search, ScanBarcode, ShoppingCart, Trash2, Banknote, CreditCard, Landmark, Hash, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -15,9 +15,20 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { Pagination } from '@/components/ui/Pagination';
 import { ProductRow } from '@/components/pos/ProductRow';
 import { CartItemRow } from '@/components/pos/CartItemRow';
+import { getCartLineTotal } from '@/lib/pricing';
 import { formatCurrency, cn } from '@/lib/utils';
 
 const PAGE_SIZE = 24;
+
+// YYYY-MM-DD for today in the user's local timezone (not UTC — a plain
+// toISOString() would roll over to tomorrow/yesterday near midnight for
+// timezones ahead of/behind UTC), matching what a native <input type="date">
+// expects/returns.
+const todayLocalISODate = () => {
+  const now = new Date();
+  const tzOffsetMs = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
+};
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash', icon: Banknote },
@@ -41,6 +52,9 @@ export default function POS() {
 
   const [cart, setCart] = useState([]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  // Sale date — pre-filled to today but always editable by the cashier;
+  // this is what gets saved as the order/sale's date of record.
+  const [saleDate, setSaleDate] = useState(todayLocalISODate);
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState('walk-in');
   const [discount, setDiscount] = useState('0');
@@ -147,9 +161,8 @@ export default function POS() {
   const removeFromCart = useCallback((productId) => setCart((prev) => prev.filter((i) => i.id !== productId)), []);
 
   const { subtotal, discountAmount, taxAmount, grandTotal } = useMemo(() => {
-    // Mirrors CartItemRow's per-line total: Quantity × Price × Square Meter
-    // for tiles with square_meter set, otherwise plain Quantity × Price.
-    const sub = cart.reduce((sum, i) => sum + (Number(i.price) || 0) * i.qty * (Number(i.square_meter) || 1), 0);
+    // Mirrors CartItemRow's per-line total exactly (same shared helper).
+    const sub = cart.reduce((sum, i) => sum + getCartLineTotal(i), 0);
     // A negative discount must never raise the total, so it's clamped here
     // in addition to being stripped from the input as the user types.
     const discountAmt = Math.max(Number(discount) || 0, 0);
@@ -179,6 +192,7 @@ export default function POS() {
   const resetCheckoutFields = () => {
     setCart([]);
     setInvoiceNumber('');
+    setSaleDate(todayLocalISODate());
     setDiscount('0');
     setAmountPaid('');
     setCustomerId('walk-in');
@@ -196,6 +210,10 @@ export default function POS() {
       toast.error('Enter an invoice number before completing the sale');
       return;
     }
+    if (!saleDate) {
+      toast.error('Select a date for this sale');
+      return;
+    }
     if (cart.some((i) => i.price === '' || i.price == null || Number(i.price) < 0)) {
       toast.error('Enter a selling price for every item in the cart');
       return;
@@ -208,13 +226,14 @@ export default function POS() {
     try {
       const { data } = await api.post('/sales', {
         invoiceNumber: invoiceNumber.trim(),
+        saleDate,
         customerId: customerId === 'walk-in' ? null : customerId,
-        // unitPrice sent to the backend is the effective per-unit price
-        // (Price × Square Meter for tiles) so the invoice total the server
-        // computes (unitPrice × quantity) matches what the cart showed —
-        // the server itself is unchanged, it still just does unitPrice × qty
-        // and deducts stock by the raw quantity (units) sold.
-        items: cart.map((i) => ({ productId: i.id, quantity: i.qty, unitPrice: Number(i.price) * (Number(i.square_meter) || 1) })),
+        // unitPrice sent to the backend is the cashier's raw typed price,
+        // unmodified — create_sale() itself applies the Tiles pricing
+        // formula (Square Meter ÷ Units Per Box × Price) from the product's
+        // own stored fields, so the frontend and backend can never compute
+        // two different totals from the same input.
+        items: cart.map((i) => ({ productId: i.id, quantity: i.qty, unitPrice: Number(i.price) || 0 })),
         discount: discountAmount,
         paymentMethod,
         paidAmount: amountPaid === '' ? undefined : Number(amountPaid),
@@ -296,18 +315,32 @@ export default function POS() {
         </div>
 
         {cart.length > 0 && (
-          <div className="border-b border-border p-5 pb-0">
-            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Hash className="h-3.5 w-3.5" /> Invoice Number <span className="text-destructive">*</span>
-            </label>
-            <Input
-              placeholder="Enter your invoice number"
-              maxLength={40}
-              required
-              value={invoiceNumber}
-              onChange={(e) => setInvoiceNumber(e.target.value)}
-              className="mb-5 font-semibold"
-            />
+          <div className="grid grid-cols-2 gap-3 border-b border-border p-5 pb-0">
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Hash className="h-3.5 w-3.5" /> Invoice Number <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Enter your invoice number"
+                maxLength={40}
+                required
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                className="mb-5 font-semibold"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" /> Date <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="date"
+                required
+                value={saleDate}
+                onChange={(e) => setSaleDate(e.target.value)}
+                className="mb-5 font-semibold"
+              />
+            </div>
           </div>
         )}
 

@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { TileOptionField } from '@/components/products/TileOptionField';
+import { getTileBoxCount, formatBoxCount } from '@/lib/pricing';
 
 // Drives the Tiles form's 5 manual-entry fields, each backed by its own
 // persisted, user-built option list (tile_field_options.field_name).
@@ -104,6 +105,7 @@ const ProductRow = memo(function ProductRow({ product, isAdmin, canManageProduct
           {product.quantity} {product.unit}
         </span>
       </TableCell>
+      <TableCell className="text-muted-foreground">{formatBoxCount(getTileBoxCount(product))}</TableCell>
       <TableCell>
         <Badge variant={product.status === 'active' ? 'success' : 'secondary'} className="capitalize">
           {product.status}
@@ -416,7 +418,7 @@ export default function Products() {
 
       <Card className="p-4">
         {loading ? (
-          <TableSkeleton rows={6} cols={7} />
+          <TableSkeleton rows={6} cols={8} />
         ) : products.length === 0 ? (
           <EmptyState
             icon={Package}
@@ -446,6 +448,7 @@ export default function Products() {
                   <TableHead>Category</TableHead>
                   <TableHead>Details</TableHead>
                   <TableHead>Stock</TableHead>
+                  <TableHead>Boxes</TableHead>
                   <TableHead>Status</TableHead>
                   {canManageProducts && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>

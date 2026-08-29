@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency, cn } from '@/lib/utils';
+import { getCartLineTotal } from '@/lib/pricing';
 
 // onIncrease/onDecrease/onQtyChange/onRemove/onPriceChange receive the item
 // id — callers pass stable (useCallback) handlers so unrelated rows skip
@@ -11,19 +12,15 @@ function CartItemRowBase({ item, currency, onIncrease, onDecrease, onQtyChange, 
   const subtitle = isTiles
     ? [item.size, item.glaze_grade].filter(Boolean).join(' · ')
     : [item.company, item.article].filter(Boolean).join(' · ');
-  // For tiles with a Square Meter (m²) set, Total = Quantity × Price × Square
-  // Meter; everything else keeps the plain Quantity × Price it always had
-  // (square_meter is null/unset for non-tile products, so the multiplier
-  // defaults to 1 and this formula reduces to the original one).
-  const sqmMultiplier = Number(item.square_meter) || 1;
-  const lineTotal = (Number(item.price) || 0) * item.qty * sqmMultiplier;
+  const lineTotal = getCartLineTotal(item);
 
   // Dynamic box-equivalent readout using the product's existing "Quantity
   // per Box" value (packing_per_box) — e.g. 15 units at 6/box → "2 boxes +
-  // 3 units". Only shown when the product actually has that value set.
+  // 3 units". Box info is a Tiles-only concept, so this is only shown for
+  // Tiles products that actually have that value set.
   const perBox = Number(item.packing_per_box);
   let boxEquivalent = null;
-  if (perBox > 0) {
+  if (isTiles && perBox > 0) {
     const boxes = Math.floor(item.qty / perBox);
     const remainder = item.qty % perBox;
     if (boxes === 0) {

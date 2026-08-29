@@ -279,7 +279,7 @@ export default function Sales() {
                       </Badge>
                     </TableCell>
                     <TableCell className="font-semibold">{formatCurrency(sale.grand_total, currency)}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDateTime(sale.created_at)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(sale.sale_date) !== '—' ? formatDate(sale.sale_date) : formatDateTime(sale.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openReturnDialog(sale.id)} title="Stock return">

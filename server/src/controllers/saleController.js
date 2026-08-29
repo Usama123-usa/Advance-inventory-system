@@ -14,7 +14,7 @@ const getSales = asyncHandler(async (req, res) => {
   let queryBuilder = supabase
     .from('sales')
     .select(
-      'id, invoice_number, grand_total, payment_method, payment_status, paid_amount, remaining_balance, created_at, customer_name, customer_phone, customers(name, phone), users(name)',
+      'id, invoice_number, grand_total, payment_method, payment_status, paid_amount, remaining_balance, created_at, sale_date, customer_name, customer_phone, customers(name, phone), users(name)',
       { count: 'exact' }
     )
     .eq('store_id', req.storeId)
@@ -235,17 +235,21 @@ const deleteSale = asyncHandler(async (req, res) => {
 // POST /api/sales
 // body: { invoiceNumber, customerId, items: [{ productId, quantity, unitPrice }],
 //         discount, paymentMethod, notes, paidAmount, customerName,
-//         customerPhone, customerAddress, customerCnic }
+//         customerPhone, customerAddress, customerCnic, saleDate }
 // Delegates to the create_sale() Postgres function so stock validation,
 // totals, sale/sale_items/inventory_logs/customer_balances writes all happen
 // atomically. Each item's unitPrice is entered by the cashier in the POS
 // cart — the product catalog no longer supplies a price, and this typed
-// price becomes the permanent price of record on the invoice. invoiceNumber
-// is entered manually by the cashier too — the database no longer generates
-// one — and must be unique within the current store (checked inside
-// create_sale() itself, before anything is written). Omitting paidAmount
-// means "paid in full" — customer info stays fully optional in that case;
-// it only matters for partial payment tracking.
+// price becomes the permanent price of record on the invoice (for Tiles
+// products, create_sale() itself applies the Square Meter ÷ Units Per Box
+// formula to this raw price — the client never premultiplies it).
+// invoiceNumber is entered manually by the cashier too — the database no
+// longer generates one — and must be unique within the current store
+// (checked inside create_sale() itself, before anything is written).
+// saleDate defaults to today inside create_sale() when omitted, but the POS
+// cart always sends the cashier's selected date explicitly. Omitting
+// paidAmount means "paid in full" — customer info stays fully optional in
+// that case; it only matters for partial payment tracking.
 const createSale = asyncHandler(async (req, res) => {
   const {
     invoiceNumber,
@@ -259,6 +263,7 @@ const createSale = asyncHandler(async (req, res) => {
     customerPhone,
     customerAddress,
     customerCnic,
+    saleDate,
   } = req.body;
 
   if (!invoiceNumber || !String(invoiceNumber).trim()) {
@@ -285,6 +290,7 @@ const createSale = asyncHandler(async (req, res) => {
     p_customer_phone: customerPhone || null,
     p_customer_address: customerAddress || null,
     p_customer_cnic: customerCnic || null,
+    p_sale_date: saleDate || null,
   });
 
   assertNoSupabaseError(error, 'Failed to complete sale');
