@@ -26,6 +26,25 @@ export function getCartLineTotal(item) {
   return price * qty;
 }
 
+// Inverse of the Tiles formula above — recovers the cashier's originally
+// typed price from a sale_item's stored unit_price (which, for Tiles, is
+// already (Square Meter ÷ Units Per Box) × price, per create_sale()/
+// update_pending_order() on the backend). Used only when re-opening an
+// existing order for edit, so the price field shows the same value it would
+// if the cashier had just typed it — not a fresh blank field. Every other
+// product category stores its raw price as-is, so no inversion is needed.
+export function getRawUnitPrice(item) {
+  const storedPrice = Number(item.unit_price ?? item.price) || 0;
+  const isTiles = item.product_type === 'tiles';
+  const squareMeter = Number(item.square_meter) || 0;
+  const perBox = Number(item.packing_per_box) || 0;
+
+  if (isTiles && perBox > 0 && squareMeter > 0) {
+    return Number((storedPrice / (squareMeter / perBox)).toFixed(2));
+  }
+  return storedPrice;
+}
+
 // Tiles-only: Total Boxes = Total Units ÷ Units Per Box (e.g. 100 units at
 // 8/box → 12.5 boxes). Returns null for non-tile products, or when the
 // product has no valid packing_per_box set (also guards divide-by-zero).

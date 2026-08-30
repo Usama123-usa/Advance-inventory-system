@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select';
-import { getCartLineTotal } from '@/lib/pricing';
+import { getCartLineTotal, getRawUnitPrice } from '@/lib/pricing';
 import { formatCurrency, cn } from '@/lib/utils';
 
 const PAYMENT_METHODS = [
@@ -61,7 +61,7 @@ export function EditPendingOrderDialog({ open, onOpenChange, saleId, onSuccess }
             packing_per_box: it.packing_per_box,
             square_meter: it.square_meter,
             qty: it.quantity,
-            price: '',
+            price: String(getRawUnitPrice(it)),
           }))
         );
         setDiscount(String(sale.discount ?? 0));
