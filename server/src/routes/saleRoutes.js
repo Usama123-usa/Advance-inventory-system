@@ -54,6 +54,21 @@ router.delete('/pending-payments/:id', requireRole('admin'), saleController.dele
 router.get('/:id', saleController.getSaleById);
 router.delete('/:id', requireRole('admin'), saleController.deleteSale);
 
+router.put(
+  '/:id/pending',
+  [
+    body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
+    body('items.*.unitPrice').isFloat({ min: 0 }).withMessage('Every item needs a valid selling price'),
+    body('discount').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Discount cannot be negative'),
+    body('paymentMethod').optional().isIn(['cash', 'card', 'bank_transfer']),
+    body('paidAmount').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }),
+  ],
+  validate,
+  saleController.updatePendingOrder
+);
+
+router.post('/:id/complete', saleController.completePendingOrder);
+
 router.post(
   '/:id/return',
   [

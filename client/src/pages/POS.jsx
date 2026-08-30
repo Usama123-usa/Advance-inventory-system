@@ -60,6 +60,7 @@ export default function POS() {
   const [discount, setDiscount] = useState('0');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [completing, setCompleting] = useState(false);
+  const [isPendingOrder, setIsPendingOrder] = useState(false);
 
   // Customer info + amount paid are optional for a full payment — they only
   // matter for tracking a partial payment's remaining balance.
@@ -199,6 +200,7 @@ export default function POS() {
     setCustomerName('');
     setCustomerPhone('');
     setCustomerAddress('');
+    setIsPendingOrder(false);
   };
 
   const handleCompleteSale = async () => {
@@ -240,10 +242,16 @@ export default function POS() {
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         customerAddress: customerAddress.trim() || undefined,
+        isPendingOrder,
       });
-      toast.success('Sale completed successfully');
-      resetCheckoutFields();
-      navigate(`/invoice/${data.data.id}`);
+      if (isPendingOrder) {
+        toast.success('Order saved as pending — manage it from Sales → Pending Orders');
+        resetCheckoutFields();
+      } else {
+        toast.success('Sale completed successfully');
+        resetCheckoutFields();
+        navigate(`/invoice/${data.data.id}`);
+      }
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -458,8 +466,23 @@ export default function POS() {
             ))}
           </div>
 
+          <label className="flex items-start gap-2 rounded-lg border border-border p-3 text-xs">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-border"
+              checked={isPendingOrder}
+              onChange={(e) => setIsPendingOrder(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-foreground">Mark as Pending Order</span>
+              <span className="block text-muted-foreground">
+                Save without completing — manage it later from Sales → Pending Orders.
+              </span>
+            </span>
+          </label>
+
           <Button variant="success" className="w-full" size="lg" loading={completing} onClick={handleCompleteSale} disabled={cart.length === 0}>
-            Complete Sale
+            {isPendingOrder ? 'Save as Pending Order' : 'Complete Sale'}
           </Button>
         </div>
       </Card>

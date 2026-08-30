@@ -7,14 +7,14 @@ const { assertNoSupabaseError } = require('../utils/supabaseErrors');
 // Note: search matches on invoice number only (PostgREST resource embedding
 // doesn't support OR-filtering across an embedded table's columns).
 const getSales = asyncHandler(async (req, res) => {
-  const { search = '', from = '', to = '', page = 1, limit = 20 } = req.query;
+  const { search = '', from = '', to = '', status = '', page = 1, limit = 20 } = req.query;
   const rangeFrom = (Number(page) - 1) * Number(limit);
   const rangeTo = rangeFrom + Number(limit) - 1;
 
   let queryBuilder = supabase
     .from('sales')
     .select(
-      'id, invoice_number, grand_total, payment_method, payment_status, paid_amount, remaining_balance, created_at, sale_date, customer_name, customer_phone, customers(name, phone), users(name)',
+      'id, invoice_number, grand_total, payment_method, payment_status, paid_amount, remaining_balance, created_at, sale_date, status, customer_name, customer_phone, customers(name, phone), users(name)',
       { count: 'exact' }
     )
     .eq('store_id', req.storeId)
@@ -24,6 +24,7 @@ const getSales = asyncHandler(async (req, res) => {
   if (search) queryBuilder = queryBuilder.ilike('invoice_number', `%${search}%`);
   if (from) queryBuilder = queryBuilder.gte('created_at', from);
   if (to) queryBuilder = queryBuilder.lte('created_at', to);
+  if (status) queryBuilder = queryBuilder.eq('status', status);
 
   const { data, error, count } = await queryBuilder;
   assertNoSupabaseError(error, 'Failed to load sales');
@@ -63,7 +64,7 @@ const getSaleById = asyncHandler(async (req, res) => {
 
   const { data: items, error: itemsError } = await supabase
     .from('sale_items')
-    .select('id, product_name, quantity, unit_price, total, sqr_meter, rate_per_meter, products(sku, barcode)')
+    .select('id, product_id, product_name, quantity, unit_price, total, sqr_meter, rate_per_meter, products(sku, barcode, product_type, packing_per_box, square_meter)')
     .eq('sale_id', req.params.id)
     .order('created_at', { ascending: true });
 
@@ -80,7 +81,14 @@ const getSaleById = asyncHandler(async (req, res) => {
       customer_address: saleRest.customer_address || customers?.address || null,
       customer_cnic: saleRest.customer_cnic || null,
       cashier_name: users?.name || null,
-      items: items.map(({ products, ...item }) => ({ ...item, sku: products?.sku, barcode: products?.barcode })),
+      items: items.map(({ products, ...item }) => ({
+        ...item,
+        sku: products?.sku,
+        barcode: products?.barcode,
+        product_type: products?.product_type,
+        packing_per_box: products?.packing_per_box,
+        square_meter: products?.square_meter,
+      })),
     },
   });
 });
@@ -264,6 +272,7 @@ const createSale = asyncHandler(async (req, res) => {
     customerAddress,
     customerCnic,
     saleDate,
+    isPendingOrder = false,
   } = req.body;
 
   if (!invoiceNumber || !String(invoiceNumber).trim()) {
@@ -291,10 +300,76 @@ const createSale = asyncHandler(async (req, res) => {
     p_customer_address: customerAddress || null,
     p_customer_cnic: customerCnic || null,
     p_sale_date: saleDate || null,
+    p_status: isPendingOrder ? 'pending' : 'completed',
   });
 
   assertNoSupabaseError(error, 'Failed to complete sale');
   res.status(201).json({ success: true, data: sale });
+});
+
+// PUT /api/sales/:id/pending
+// body: same shape as POST /sales (minus invoiceNumber, which never changes).
+// Delegates to update_pending_order(): reverts stock for the order's current
+// items, replaces them with the new item set, and recomputes totals — only
+// allowed while the sale's status is still 'pending'.
+const updatePendingOrder = asyncHandler(async (req, res) => {
+  const {
+    items,
+    discount = 0,
+    paymentMethod = 'cash',
+    notes = '',
+    paidAmount,
+    customerName,
+    customerPhone,
+    customerAddress,
+    customerCnic,
+    saleDate,
+  } = req.body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new ApiError(400, 'At least one item is required');
+  }
+  if (items.some((i) => i.unitPrice === undefined || i.unitPrice === null || Number(i.unitPrice) < 0)) {
+    throw new ApiError(400, 'Every item needs a valid selling price');
+  }
+
+  const { data: sale, error } = await supabase.rpc('update_pending_order', {
+    p_store_id: req.storeId,
+    p_sale_id: req.params.id,
+    p_items: items,
+    p_discount: Math.max(Number(discount) || 0, 0),
+    p_payment_method: paymentMethod,
+    p_notes: notes,
+    p_user_id: req.user.id,
+    p_paid_amount: paidAmount === undefined || paidAmount === null || paidAmount === '' ? null : Number(paidAmount),
+    p_customer_name: customerName || null,
+    p_customer_phone: customerPhone || null,
+    p_customer_address: customerAddress || null,
+    p_customer_cnic: customerCnic || null,
+    p_sale_date: saleDate || null,
+  });
+
+  assertNoSupabaseError(error, 'Failed to update pending order');
+  res.json({ success: true, data: sale });
+});
+
+// POST /api/sales/:id/complete
+// Marks a Pending Order as completed. Stock was already deducted when the
+// order was saved as pending, so this is just a status flip — no stock or
+// totals recalculation needed.
+const completePendingOrder = asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('sales')
+    .update({ status: 'completed' })
+    .eq('id', req.params.id)
+    .eq('store_id', req.storeId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle();
+
+  assertNoSupabaseError(error, 'Failed to complete order');
+  if (!data) throw new ApiError(404, 'Pending order not found');
+  res.json({ success: true, message: 'Order marked as completed' });
 });
 
 // POST /api/sales/:id/return  { items: [{ saleItemId, quantity }], reason }
@@ -341,6 +416,8 @@ module.exports = {
   receivePendingPayment,
   deletePendingPayment,
   createSale,
+  updatePendingOrder,
+  completePendingOrder,
   deleteSale,
   createSaleReturn,
 };

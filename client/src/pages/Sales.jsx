@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Receipt, Eye, Trash2, X, Undo2, Download } from 'lucide-react';
+import { Search, Receipt, Eye, Trash2, X, Undo2, Download, Pencil, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -17,6 +17,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SalesReturnDialog } from '@/components/sales/SalesReturnDialog';
+import { EditPendingOrderDialog } from '@/components/sales/EditPendingOrderDialog';
 import { generateInvoicesPdf } from '@/lib/generateInvoicePdf';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 
@@ -35,6 +36,7 @@ export default function Sales() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const [activeTab, setActiveTab] = useState('completed');
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -59,6 +61,10 @@ export default function Sales() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnSaleId, setReturnSaleId] = useState(null);
 
+  const [editPendingId, setEditPendingId] = useState(null);
+  const [completeTarget, setCompleteTarget] = useState(null);
+  const [completing, setCompleting] = useState(false);
+
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
@@ -69,6 +75,7 @@ export default function Sales() {
           // Today's Sales figure is computed with, so the two never disagree.
           from: startDate ? `${startDate}T00:00:00.000Z` : undefined,
           to: endDate ? `${endDate}T23:59:59.999Z` : undefined,
+          status: activeTab,
           page,
           limit: 20,
         },
@@ -80,13 +87,13 @@ export default function Sales() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, startDate, endDate, page]);
+  }, [debouncedSearch, startDate, endDate, activeTab, page]);
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
-  useEffect(() => setPage(1), [debouncedSearch, startDate, endDate]);
+  useEffect(() => setPage(1), [debouncedSearch, startDate, endDate, activeTab]);
   // Selection is page/filter-scoped — dropping it whenever the visible rows
   // change avoids "downloading" invoices that are no longer on screen.
-  useEffect(() => setSelectedIds(new Set()), [debouncedSearch, startDate, endDate, page]);
+  useEffect(() => setSelectedIds(new Set()), [debouncedSearch, startDate, endDate, activeTab, page]);
 
   // Once the initial filter (if any) has been applied, drop it from the URL
   // so it doesn't linger stale — the inputs below remain the source of truth.
@@ -150,6 +157,20 @@ export default function Sales() {
     });
   };
 
+  const handleComplete = async () => {
+    setCompleting(true);
+    try {
+      await api.post(`/sales/${completeTarget.id}/complete`);
+      toast.success('Order marked as completed');
+      setCompleteTarget(null);
+      fetchSales();
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   const openReturnDialog = (saleId = null) => {
     setReturnSaleId(saleId);
     setReturnDialogOpen(true);
@@ -194,6 +215,23 @@ export default function Sales() {
         }
       />
 
+      <div className="flex gap-1 rounded-lg border border-border bg-secondary/50 p-1 w-fit">
+        {[
+          { id: 'completed', label: 'Completed Orders' },
+          { id: 'pending', label: 'Pending Orders' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              activeTab === t.id ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative max-w-sm flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -232,7 +270,15 @@ export default function Sales() {
         {loading ? (
           <TableSkeleton rows={8} cols={9} />
         ) : sales.length === 0 ? (
-          <EmptyState icon={Receipt} title="No sales yet" description="Invoices generated from the POS will show up here." />
+          <EmptyState
+            icon={Receipt}
+            title={activeTab === 'pending' ? 'No pending orders' : 'No sales yet'}
+            description={
+              activeTab === 'pending'
+                ? 'Orders saved as pending from the POS will show up here.'
+                : 'Invoices generated from the POS will show up here.'
+            }
+          />
         ) : (
           <>
             <Table>
@@ -282,12 +328,24 @@ export default function Sales() {
                     <TableCell className="text-muted-foreground">{formatDate(sale.sale_date) !== '—' ? formatDate(sale.sale_date) : formatDateTime(sale.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openReturnDialog(sale.id)} title="Stock return">
-                          <Undo2 className="h-4 w-4 text-orange" />
-                        </Button>
+                        {activeTab === 'completed' && (
+                          <Button variant="ghost" size="icon" onClick={() => openReturnDialog(sale.id)} title="Stock return">
+                            <Undo2 className="h-4 w-4 text-orange" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => navigate(`/invoice/${sale.id}`)} title="View invoice">
                           <Eye className="h-4 w-4 text-purple" />
                         </Button>
+                        {activeTab === 'pending' && (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => setEditPendingId(sale.id)} title="Edit order">
+                              <Pencil className="h-4 w-4 text-primary" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => setCompleteTarget(sale)} title="Complete order">
+                              <CheckCircle2 className="h-4 w-4 text-success" />
+                            </Button>
+                          </>
+                        )}
                         {isAdmin && (
                           <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(sale)} title="Delete sale">
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -337,6 +395,28 @@ export default function Sales() {
         onOpenChange={setReturnDialogOpen}
         initialSaleId={returnSaleId}
         onSuccess={fetchSales}
+      />
+
+      <EditPendingOrderDialog
+        open={!!editPendingId}
+        onOpenChange={(open) => !open && setEditPendingId(null)}
+        saleId={editPendingId}
+        onSuccess={fetchSales}
+      />
+
+      <ConfirmDialog
+        open={!!completeTarget}
+        onOpenChange={(open) => !open && setCompleteTarget(null)}
+        title="Complete this order?"
+        description={
+          completeTarget
+            ? `Invoice ${completeTarget.invoice_number} (${formatCurrency(completeTarget.grand_total, currency)}) will move from Pending Orders to Completed Orders.`
+            : ''
+        }
+        confirmLabel="Complete Order"
+        variant="success"
+        loading={completing}
+        onConfirm={handleComplete}
       />
     </div>
   );
